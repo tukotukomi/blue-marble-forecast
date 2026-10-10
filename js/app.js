@@ -60,9 +60,11 @@ const state = {
   fc: null, nws: null, pollen: null, cities: [],
   started: false,
 };
-state.viewing = state.home;
+// Open where the visitor was looking last time (their home on a first visit).
+state.viewing = store.get('viewing', null) || state.home;
 
-const VIEWS = ['now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry', 'pollen', 'globe'];
+// Dock order; the app still opens on 'now' (see start()).
+const VIEWS = ['globe', 'now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry', 'pollen'];
 
 const ico = d => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const DOCK_ICONS = {
@@ -139,6 +141,13 @@ const globe = createGlobe(globeHost, {
   onLabelClick: openCity,
   onNeedWeather,
   onViewSettled,
+  // On phones the first tap on the Earth folds the forecast window down to
+  // its title, uncovering the globe; later taps pick places as usual.
+  onTap() {
+    if (!canCollapse() || isCollapsed()) return false;
+    setCollapsed(true);
+    return true;
+  },
   onPick(lat, lon, x, y) {
     closePick();
     pickCard = document.createElement('div');
@@ -374,6 +383,7 @@ function go(id, { sound = true } = {}) {
   if (sound) blip('select');
   closePick();
   if (id !== 'globe' && id !== 'region') setExplore(false);
+  setCollapsed(false);
   state.view = id;
   dock.querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.view === id ? 'page' : 'false'));
   document.body.dataset.view = id;
@@ -909,6 +919,8 @@ function updateHiRes(name) {
 // ---------- locations ----------
 function openLocation(loc, { asHome = false } = {}) {
   state.viewing = { ...loc };
+  store.set('viewing', state.viewing);
+  setCollapsed(false);
   if (asHome) { state.home = { ...loc }; store.set('home', state.home); }
   state.fc = null;
   render(false);
@@ -1142,6 +1154,23 @@ $('#install-btn').addEventListener('click', async () => {
   installPrompt = null;
   renderInstall();
 });
+
+// ---------- collapsed window (phones) ----------
+// Forecast screens only: Globe and Region already have a small card and
+// Explore mode. Picking another screen or place opens the window again.
+const phone = matchMedia('(max-width: 860px)');
+const canCollapse = () => phone.matches && !['globe', 'region'].includes(state.view);
+const isCollapsed = () => document.body.classList.contains('collapsed');
+function setCollapsed(on) {
+  if (isCollapsed() === on) return;
+  document.body.classList.toggle('collapsed', on);
+  $('#expand').setAttribute('aria-expanded', String(!on));
+  closePick();
+  measureSafe();
+}
+// The whole folded title bar opens it, not just the button.
+$('#panel').addEventListener('click', () => { if (isCollapsed()) { blip('select'); setCollapsed(false); } });
+phone.addEventListener('change', () => { if (!phone.matches) setCollapsed(false); });
 
 // ---------- explore mode (Globe & Region) ----------
 // Hides the bars, panel, dock and ticker so the Earth gets the whole screen,

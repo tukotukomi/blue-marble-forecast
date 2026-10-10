@@ -195,7 +195,7 @@ function blankTex(rgba) {
   return t;
 }
 
-export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, onLabelClick, onNeedWeather, onViewSettled, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
+export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFrame, onLabelClick, onNeedWeather, onViewSettled, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
   // Set whenever the scene needs a redraw; see the main loop below.
   let dirty = true;
   const invalidate = () => { dirty = true; };
@@ -406,7 +406,8 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     pinch0 = 0;
     if (down && down.moved < 6 && pointers.size === 0 && performance.now() - down.t < 500) {
       vel.lat = vel.lon = 0;
-      const hit = pick(e.clientX, e.clientY);
+      // onTap returning true means the app used the tap for something else.
+      const hit = !onTap?.() && pick(e.clientX, e.clientY);
       if (hit) onPick?.(hit.lat, hit.lon, e.clientX, e.clientY);
     }
     if (pointers.size === 0) down = null;

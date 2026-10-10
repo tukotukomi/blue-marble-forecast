@@ -38,6 +38,7 @@
   "top.language": "语言",
   "top.languageCurrent": "语言：{lang}",
   "explore.hide": "探索",
+  "panel.expand": "展开",
   "explore.hideLabel": "隐藏控件以探索地球",
   "explore.show": "显示控件",
   "units.fahrenheit": "华氏度",

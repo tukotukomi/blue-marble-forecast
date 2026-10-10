@@ -420,14 +420,9 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
   body[data-view="globe"] .panel, body[data-view="region"] .panel { width: 100%; }
   body[data-view="globe"] .stage, body[data-view="region"] .stage { top: auto; height: auto; }
   .stats { grid-template-columns: repeat(3, 1fr); }
-  .now-temp { font-size: 64px; }
-  .now-icon svg { width: 130px; height: 130px; }
-  .blocks { grid-template-columns: repeat(2, 1fr); }
   .week { grid-template-columns: repeat(5, minmax(84px, 1fr)); overflow-x: auto; }
   .uv { grid-template-columns: 1fr; }
   .laundry-days { grid-template-columns: repeat(2, 1fr); }
-  .day-hero svg { width: 110px; height: 110px; }
-  .hilo-big { font-size: 38px; }
   .intro-card { margin-top: 28vh; }
 }
 @media (max-width: 860px) and (max-height: 760px) { .stage { top: 30vh; } }
@@ -642,3 +637,53 @@ body.has-pad .pad-help { display: block; }
 .source-row small { font-weight: 500; font-size: 12px; color: var(--ink-soft); }
 /* .pill sets display, which would otherwise override the hidden attribute. */
 #install-btn[hidden] { display: none; }
+
+/* ---------- phone forecast screens ---------- */
+/* Compact type and icons so Now, Today and Tomorrow leave room for the globe
+   above them. Only the weather icon in .day-hero is resized (not the drop). */
+@media (max-width: 860px) {
+  .panel-head { padding: 12px 16px 8px; gap: 2px 10px; }
+  .panel-head h1 { font-size: 18px; }
+  #panel-date { font-size: 12px; }
+  .panel-body { padding: 12px 16px 14px; }
+  .cond { font-size: 17px; line-height: 1.2; }
+
+  .now { gap: 10px; }
+  .now-icon svg { width: 76px; height: 76px; }
+  .now-temp { font-size: 46px; }
+  .feels { font-size: 12px; margin-top: 0; }
+  .hilo-row { gap: 12px; margin-top: 4px; font-size: 12px; }
+  .hilo-row b { font-size: 16px; }
+  .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+  .stat { padding: 7px 8px; border-radius: 12px; }
+  .stat span { font-size: 10px; }
+  .stat b { font-size: 13px; }
+  .hour { width: 52px; padding: 6px 2px; border-radius: 12px; }
+  .hour > .wx-icon { width: 30px; height: 30px; }
+
+  .day-hero { gap: 12px; }
+  .day-hero > .wx-icon { width: 76px; height: 76px; }
+  .hilo-big { font-size: 30px; gap: 10px; }
+  .pop.big { font-size: 13px; margin-top: 2px; }
+  .blocks { grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+  .block { padding: 8px 2px; border-radius: 14px; }
+  .block > .wx-icon { width: 40px; height: 40px; }
+  .block-label { font-size: 12px; }
+  .block-range { font-size: 10px; }
+  .block-temp { font-size: 17px; }
+  .nws { margin-top: 10px; padding: 10px 12px; font-size: 12px; }
+}
+
+/* ---------- collapsed window (phones) ---------- */
+/* A tap on the globe folds the forecast window to its title (see app.js). */
+.expand-btn {
+  display: none; align-items: center; gap: 4px; margin-left: auto; padding: 8px 14px; border: 0; border-radius: 999px;
+  font-weight: 800; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #fff;
+  background: linear-gradient(180deg, #5fd3ff, var(--wii) 50%, var(--wii-deep));
+  box-shadow: 0 4px 10px -4px rgba(26, 143, 208, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+body.collapsed .expand-btn { display: inline-flex; }
+body.collapsed .panel-body, body.collapsed #panel-date { display: none; }
+body.collapsed .panel-head { align-items: center; flex-wrap: nowrap; border-bottom: 0; padding: 10px 10px 10px 16px; }
+body.collapsed .panel { cursor: pointer; animation: fold-in 0.25s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes fold-in { from { transform: translateY(12px); opacity: 0.6; } }

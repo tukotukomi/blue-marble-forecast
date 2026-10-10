@@ -38,6 +38,7 @@
   "top.language": "Language",
   "top.languageCurrent": "Language: {lang}",
   "explore.hide": "Explore",
+  "panel.expand": "Expand",
   "explore.hideLabel": "Hide controls to explore the globe",
   "explore.show": "Show controls",
   "units.fahrenheit": "Fahrenheit",

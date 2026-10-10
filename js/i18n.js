@@ -1,6 +1,5 @@
-// Localization: flat-key string tables in weather/strings/*.json, the same
-// shape as the portfolio's own strings/ folder. The language choice is stored
-// under the portfolio's `lang` key so it carries across tuckermills.com.
+// Localization: flat-key string tables in strings/*.json (one key per line).
+// The visitor's language choice is stored under `lang`.
 
 export const LANGUAGES = {
   en: { label: 'English', short: 'EN', file: 'en.json', locale: 'en-US', search: 'en' },

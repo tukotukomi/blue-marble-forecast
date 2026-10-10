@@ -2,7 +2,7 @@
 // ~25 national radar networks (CC BY 4.0), every 5 minutes.
 //
 // OPERA's open bucket doesn't allow browser (CORS) access, so files come
-// through a tiny read-only relay (weather/tools/opera-relay/worker.js on
+// through a tiny read-only relay (tools/opera-relay/worker.js on
 // Cloudflare). Decoding, reprojection and colouring happen in
 // opera-worker.js, which returns PNGs that the frame player uses like any
 // other radar image.

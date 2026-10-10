@@ -7,7 +7,8 @@
 // needs) and lets Cloudflare cache each file. No processing happens here.
 //
 // Deploy: Cloudflare dashboard > Workers & Pages > Create > Worker > paste
-// this file > Deploy. Then put its URL in weather/js/opera.js (OPERA_RELAY).
+// this file > Deploy (or: npx wrangler deploy). Then put its URL in
+// js/opera.js (RELAY_URL).
 
 const BUCKET = 'https://s3.waw3-1.cloudferro.com/openradar-24h/';
 // Only the reflectivity composite, e.g. 2026/10/10/OPERA/COMP/OPERA@20261010T1710@0@DBZH.tiff

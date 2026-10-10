@@ -1,7 +1,10 @@
 // Service worker for the home-screen app.
 //
 // - App files (this folder): network first, so a new deploy shows up right
-//   away; the cached copy is only used when offline.
+//   away; the cached copy is only used when offline. They're fetched with
+//   no-cache: GitHub Pages lets browsers reuse files for 10 minutes, which
+//   right after a deploy could mix new and old modules. Unchanged files cost
+//   only a short "not modified" reply.
 // - Files that never change: NASA's whole-globe images (img/earth-*), the
 //   version-pinned three.js library and the web fonts. Cache first, so
 //   the globe appears instantly on launch and the app can start offline.
@@ -31,7 +34,7 @@ self.addEventListener('fetch', e => {
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);
   try {
-    const res = await fetch(req);
+    const res = await fetch(req, { cache: 'no-cache' });
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (err) {

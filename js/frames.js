@@ -57,7 +57,7 @@ export class FrameLayer {
 
   // Swap in a fresh list of frames, keeping already-downloaded ones.
   async setFrames(frames) {
-    const keep = new Set(frames.map(f => f.url));
+    const keep = new Set(frames.map(f => f.url).filter(Boolean));
     for (const [url, p] of this.blobs) {
       if (!keep.has(url)) { p.then(u => u && URL.revokeObjectURL(u)); this.blobs.delete(url); }
     }
@@ -77,12 +77,13 @@ export class FrameLayer {
 
   async prefetch() {
     // Newest first, two at a time, so the loop fills in from "now" backwards.
-    const queue = this.frames.map(f => f.url).reverse();
+    const queue = this.frames.map(f => f.url).filter(Boolean).reverse();
     const worker = async () => { while (queue.length) await this.blob(queue.shift()); };
     await Promise.all([worker(), worker()]);
   }
 
   async decode(i) {
+    if (this.frames[i].image) return this.frames[i].image; // drawn in the page (forecast)
     const src = await this.blob(this.frames[i].url);
     if (!src) return null;
     const img = new Image();

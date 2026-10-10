@@ -47,7 +47,7 @@ export async function fetchCities(cities) {
     current: 'temperature_2m,weather_code,is_day',
     daily: 'weather_code,temperature_2m_max,temperature_2m_min',
   });
-  const key = 'cities:' + cities.map(c => c.name).join('|');
+  const key = 'cities:' + cities.map(c => `${c.lat},${c.lon}`).join('|');
   const data = await getJSON(`${OM}?${p}`, { cacheKey: key, ttlMin: 30 });
   const list = Array.isArray(data) ? data : [data];
   return cities.map((c, i) => ({ ...c, wx: list[i] }));
@@ -187,5 +187,17 @@ export async function fetchRadarFrames(minutes = 120, stepMin = 10) {
     // Use the scan time exactly as published: the server only matches exact values.
     url: `${NOWCOAST}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=base_reflectivity_mosaic&STYLES=&CRS=EPSG:4326`
       + `&BBOX=${s},${w},${n},${e}&WIDTH=2048&HEIGHT=1024&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${encodeURIComponent(raw)}`,
+  }));
+}
+
+// ---- More cities to explore ----
+
+// ~7,000 extra places from Natural Earth (public domain), generated into
+// data/places.json. Rows: [name, es|0, zh|0, cc, lat, lon, minZoom, region].
+export async function fetchPlaces() {
+  const res = await fetch(new URL('../data/places.json', import.meta.url));
+  if (!res.ok) throw new Error(`places ${res.status}`);
+  return (await res.json()).map(([name, es, zh, cc, lat, lon, minZoom, region]) => ({
+    name, es: es || undefined, zh: zh || undefined, cc, lat, lon, minZoom, region,
   }));
 }

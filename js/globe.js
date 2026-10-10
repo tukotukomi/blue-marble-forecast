@@ -65,15 +65,27 @@ void main() {
 }`;
 
 const FRAG = `
-uniform sampler2D dayTex, nightTex, satA, satB, radA, radB;
-uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix;
-uniform vec4 radBox; // west, south, east, north of the radar image
+uniform sampler2D dayTex, nightTex, satA, satB, radA, radB, fcstA, fcstB, detailDay, detailNight;
+uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uFcst, fcstMix, uDetail;
+// Image patches as (west, south, width, height) in degrees. West may be any
+// longitude, so a patch can straddle the date line.
+uniform vec4 radBox, fcstBox, detailBox;
 varying vec2 vUv; varying vec3 vN; varying vec3 vW;
+vec2 boxUv(vec2 ll, vec4 box) {
+  return vec2(mod(ll.x - box.x + 360.0, 360.0) / box.z, (ll.y - box.y) / box.w);
+}
+float inside(vec2 uv) { return step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0); }
 void main() {
   vec3 n = normalize(vN);
   float d = dot(n, sunDir);
+  vec2 ll = vec2(vUv.x * 360.0 - 180.0, vUv.y * 180.0 - 90.0);
   vec3 day = texture2D(dayTex, vUv).rgb;
   vec3 night = texture2D(nightTex, vUv).rgb;
+  // Sharper imagery for the area in view when zoomed in close.
+  vec2 duv = boxUv(ll, detailBox);
+  float dIn = inside(duv) * uDetail;
+  day = mix(day, texture2D(detailDay, duv).rgb, dIn);
+  night = mix(night, texture2D(detailNight, duv).rgb, dIn);
   // City lights read best slightly boosted and warmed up.
   night = pow(night, vec3(1.15)) * vec3(1.5, 1.35, 1.1) + vec3(0.004, 0.008, 0.02);
   float lit = smoothstep(-0.10, 0.14, d);
@@ -81,15 +93,19 @@ void main() {
   vec3 col = mix(day * 0.95, mix(night, dayLit, lit), uNight);
   // Warm glow along the terminator.
   col += uNight * vec3(0.22, 0.09, 0.03) * exp(-pow((d - 0.02) * 9.0, 2.0)) * 0.5;
-  // Satellite rain covers the globe; radar only its own lat/lon box, where
-  // the live radar replaces the hours-old satellite estimate.
-  vec2 ll = vec2(vUv.x * 360.0 - 180.0, vUv.y * 180.0 - 90.0);
-  vec2 ruv = (ll - radBox.xy) / (radBox.zw - radBox.xy);
-  float inBox = step(0.0, ruv.x) * step(ruv.x, 1.0) * step(0.0, ruv.y) * step(ruv.y, 1.0);
+  // Precipitation, back to front: satellite rain (global), live radar (its
+  // own box), then the 12-hour forecast (a box around the viewed place).
+  // Each later layer replaces the ones beneath it inside its box.
+  vec2 ruv = boxUv(ll, radBox);
+  float rIn = inside(ruv) * uRad;
+  vec2 fuv = boxUv(ll, fcstBox);
+  float fIn = inside(fuv) * uFcst;
   vec4 s = mix(texture2D(satA, vUv), texture2D(satB, vUv), satMix);
-  col = mix(col, s.rgb, s.a * uSat * (1.0 - inBox * uRad) * 0.85);
+  col = mix(col, s.rgb, s.a * uSat * (1.0 - rIn) * (1.0 - fIn) * 0.85);
   vec4 r = mix(texture2D(radA, ruv), texture2D(radB, ruv), radMix);
-  col = mix(col, r.rgb, r.a * uRad * inBox * 0.9);
+  col = mix(col, r.rgb, r.a * rIn * (1.0 - fIn) * 0.9);
+  vec4 f = mix(texture2D(fcstA, fuv), texture2D(fcstB, fuv), fcstMix);
+  col = mix(col, f.rgb, f.a * fIn * 0.9);
   // Atmospheric rim.
   vec3 v = normalize(cameraPosition - vW);
   float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
@@ -119,7 +135,7 @@ function blankTex(rgba) {
   return t;
 }
 
-export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
+export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, onLabelClick, onNeedWeather, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
   // Set whenever the scene needs a redraw; see the main loop below.
   let dirty = true;
   const invalidate = () => { dirty = true; };
@@ -146,7 +162,11 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
     uNight: { value: 1 },
     uSat: { value: 0 }, satMix: { value: 0 }, satA: { value: null }, satB: { value: null },
     uRad: { value: 0 }, radMix: { value: 0 }, radA: { value: null }, radB: { value: null },
-    radBox: { value: new THREE.Vector4(RADAR_BOX.w, RADAR_BOX.s, RADAR_BOX.e, RADAR_BOX.n) },
+    radBox: { value: new THREE.Vector4(RADAR_BOX.w, RADAR_BOX.s, RADAR_BOX.e - RADAR_BOX.w, RADAR_BOX.n - RADAR_BOX.s) },
+    uFcst: { value: 0 }, fcstMix: { value: 0 }, fcstA: { value: null }, fcstB: { value: null },
+    fcstBox: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uDetail: { value: 0 }, detailDay: { value: null }, detailNight: { value: null },
+    detailBox: { value: new THREE.Vector4(0, 0, 1, 1) },
   };
   const loaded = {};
   function load(name, uniform) {
@@ -168,8 +188,13 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
   const anims = {
     sat: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('sat', i, n, time) }),
     radar: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar', i, n, time) }),
+    fcst: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('fcst', i, n, time) }),
   };
-  const ANIM_UNIFORMS = { sat: ['uSat', 'satA', 'satB', 'satMix'], radar: ['uRad', 'radA', 'radB', 'radMix'] };
+  const ANIM_UNIFORMS = {
+    sat: ['uSat', 'satA', 'satB', 'satMix'],
+    radar: ['uRad', 'radA', 'radB', 'radMix'],
+    fcst: ['uFcst', 'fcstA', 'fcstB', 'fcstMix'],
+  };
   function bindAnims() {
     for (const [k, layer] of Object.entries(anims)) {
       const [, a, b, m] = ANIM_UNIFORMS[k];
@@ -238,7 +263,11 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
   let mode = 'intro';
   let lastInteract = 0;
   let offset = { x: 0, y: 0 }, offsetTarget = { x: 0, y: 0 };
-  const LIMITS = { min: 1.12, max: 6 };
+  // min ~220 km above the surface: as close as the 500 m imagery stays sharp.
+  const LIMITS = { min: 1.035, max: 6 };
+  // Zoom works on altitude (dist - 1), so each step feels the same up close
+  // and far away.
+  const zoomBy = factor => { cam.dist = THREE.MathUtils.clamp(1 + (cam.dist - 1) * factor, LIMITS.min, LIMITS.max); };
 
   // On portrait phones the narrow horizontal field of view is what clips the
   // Earth, so the overview distances are pushed back until it fits the width.
@@ -263,7 +292,9 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
   const el = renderer.domElement;
   const pointers = new Map();
   let down = null, pinch0 = 0;
-  const interactive = () => mode === 'globe' || mode === 'region';
+  // The Earth can be dragged and zoomed on every screen (anywhere outside the
+  // windows); only the opening screen keeps it to itself.
+  const interactive = () => mode !== 'intro';
 
   el.addEventListener('pointerdown', e => {
     if (!interactive()) return;
@@ -286,13 +317,14 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinch0) cam.dist = THREE.MathUtils.clamp(cam.dist * pinch0 / d, LIMITS.min, LIMITS.max);
+      if (pinch0) zoomBy(pinch0 / d);
       pinch0 = d;
       if (down) down.moved = 99;
       return;
     }
     if (down) down.moved += Math.abs(dx) + Math.abs(dy);
-    const k = (cam.dist - 0.92) * 0.11;
+    // Degrees per pixel shrink with altitude so the ground tracks the finger.
+    const k = (cam.dist - 1) * 0.1 + 0.0008;
     vel.lon = -dx * k; vel.lat = dy * k;
     cam.lon += vel.lon; cam.lat = THREE.MathUtils.clamp(cam.lat + vel.lat, -85, 85);
   });
@@ -313,7 +345,7 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
     if (!interactive()) return;
     e.preventDefault();
     anim = null; lastInteract = performance.now();
-    cam.dist = THREE.MathUtils.clamp(cam.dist * Math.exp(e.deltaY * 0.0012), LIMITS.min, LIMITS.max);
+    zoomBy(Math.exp(e.deltaY * 0.0016));
   }, { passive: false });
 
   const raycaster = new THREE.Raycaster();
@@ -327,68 +359,193 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
   }
 
   // --- HTML labels pinned to the surface ---
-  let markers = [];          // { item, el, vec }
+  // Items: { lat, lon, name, minZoom, home?, wx? }. The DOM button for a
+  // label is only created the first time it is placed on screen, so thousands
+  // of cities cost nothing until you zoom in on them.
+  let markers = [];
   function setMarkers(items) {
     labelLayer.replaceChildren();
-    markers = items.map(item => {
-      const m = document.createElement('button');
-      m.className = 'g-label' + (item.home ? ' is-home' : '');
-      m.type = 'button';
-      m.innerHTML = renderLabel(item, mode);
-      m.addEventListener('click', () => item.onClick?.(item));
-      labelLayer.appendChild(m);
-      return { item, el: m, vec: toVec(item.lat, item.lon, 1.003), w: 0, h: 0, dirty: true, shown: false, tf: '', op: '' };
-    });
+    markers = items.map(item => ({
+      item, el: null, vec: toVec(item.lat, item.lon, 1.0004),
+      w: 0, h: 0, dirty: true, shown: false, tf: '', op: '', asked: false,
+      // Collision size before the label exists: a pill around the name.
+      ew: 54 + (item.name?.length || 8) * 6.5, eh: 30,
+    }));
     invalidate();
   }
-  function refreshLabels() {
-    for (const m of markers) { m.el.innerHTML = renderLabel(m.item, mode); m.dirty = true; }
+  function element(m) {
+    if (!m.el) {
+      const b = document.createElement('button');
+      b.className = 'g-label' + (m.item.home ? ' is-home' : '');
+      b.type = 'button';
+      b.style.visibility = 'hidden';
+      b.style.zIndex = m.item.home ? 5 : 1;
+      b.innerHTML = renderLabel(m.item, mode);
+      b.addEventListener('click', () => onLabelClick?.(m.item));
+      labelLayer.appendChild(b);
+      m.el = b;
+      m.dirty = true;
+    }
+    return m.el;
+  }
+  // Re-render label contents (new weather, units, language or mode). Pass a
+  // Set of items to refresh just those.
+  function refreshLabels(only) {
+    for (const m of markers) {
+      if (!m.el || (only && !only.has(m.item))) continue;
+      m.el.innerHTML = renderLabel(m.item, mode);
+      m.dirty = true;
+    }
     invalidate();
   }
 
+  // Map-style zoom level for the current altitude: about 3 for the whole
+  // globe, ~5 for the regional view and ~8 at the closest zoom. Cities carry
+  // the smallest zoom at which they should appear (Natural Earth's MIN_ZOOM).
+  const zoomLevel = () => Math.log2(31.1 / Math.max(cam.dist - 1, 0.01)) - 1;
+
   // Labels are only touched when their position, fade or visibility actually
-  // changes: writing ~140 inline styles every frame was the main cost on the
-  // main thread (and made Firefox's compositor animations stutter).
+  // changes: writing hundreds of inline styles every frame was the main cost
+  // on the main thread (and made Firefox's compositor animations stutter).
   const tmp = new THREE.Vector3(), camDir = new THREE.Vector3();
   const snap = v => Math.round(v * devicePixelRatio) / devicePixelRatio;
   function show(m, on) {
     if (m.shown === on) return;
     m.shown = on;
-    m.el.style.visibility = on ? 'visible' : 'hidden';
+    if (m.el) m.el.style.visibility = on ? 'visible' : 'hidden';
   }
   function layoutLabels(w, h) {
     camDir.copy(camera.position).normalize();
     const placed = [];
     const safe = safeArea();
-    const showTier2 = mode === 'region' || cam.dist < 1.9;
+    const z = zoomLevel();
+    const horizon = 1 - 1 / cam.dist;
+    const want = [];
     for (const m of markers) {
       const it = m.item;
-      let visible = it.home || mode === 'globe' || mode === 'region';
-      if (!it.home && it.tier === 2 && !showTier2) visible = false;
-      const facing = m.vec.dot(camDir) / m.vec.length() - 1 / cam.dist;
-      if (facing < 0.02) visible = false;
+      let visible = mode !== 'intro' && (it.home || (it.minZoom ?? 0) <= z);
+      // 0 at the horizon, 1 directly below the camera.
+      const facing = (m.vec.dot(camDir) / m.vec.length() - 1 / cam.dist) / horizon;
+      if (facing < 0.03) visible = false;
       if (visible) {
         tmp.copy(m.vec).project(camera);
         const x = (tmp.x * 0.5 + 0.5) * w, y = (-tmp.y * 0.5 + 0.5) * h;
-        if (m.dirty) {
-          m.w = m.el.offsetWidth || 80; m.h = m.el.offsetHeight || 40; m.dirty = false;
-          m.el.style.zIndex = it.home ? 5 : 1;
-        }
-        const box = { l: x - m.w / 2, r: x + m.w / 2, t: y - m.h, b: y };
-        const clash = !it.home && placed.some(p => box.l < p.r + 4 && box.r > p.l - 4 && box.t < p.b + 4 && box.b > p.t - 4);
-        const off = x < -60 || x > w + 60 || (!it.home && (y - m.h < safe.top || y > h - safe.bottom));
+        if (m.el && m.dirty) { m.w = m.el.offsetWidth || m.ew; m.h = m.el.offsetHeight || m.eh; m.dirty = false; }
+        const bw = m.el ? m.w : m.ew, bh = m.el ? m.h : m.eh;
+        const box = { l: x - bw / 2, r: x + bw / 2, t: y - bh, b: y };
+        const off = x < -60 || x > w + 60 || (!it.home && (y - bh < safe.top || y > h - safe.bottom));
+        const clash = !off && !it.home && placed.some(p => box.l < p.r + 4 && box.r > p.l - 4 && box.t < p.b + 4 && box.b > p.t - 4);
         if (!clash && !off) {
           placed.push(box);
+          const el = element(m);
           const tf = `translate(${snap(box.l)}px, ${snap(box.t)}px)`;
-          if (tf !== m.tf) { m.tf = tf; m.el.style.transform = tf; }
-          const op = (Math.round(Math.min(1, facing * 6) * 20) / 20).toString();
-          if (op !== m.op) { m.op = op; m.el.style.opacity = op; }
+          if (tf !== m.tf) { m.tf = tf; el.style.transform = tf; }
+          const op = (Math.round(Math.min(1, facing * 4) * 20) / 20).toString();
+          if (op !== m.op) { m.op = op; el.style.opacity = op; }
           show(m, true);
+          if (!it.home && !it.wx && !m.asked) { m.asked = true; want.push(it); }
           continue;
         }
       }
       show(m, false);
     }
+    if (want.length) onNeedWeather?.(want);
+  }
+
+  // --- Sharper imagery when zoomed in ---
+  // The whole-globe textures are ~10 km per pixel. Closer than DETAIL_DIST the
+  // globe asks NASA GIBS for just the area in view, at about screen resolution
+  // (Blue Marble and Black Marble are 500 m data), and blends it over the base.
+  const DETAIL_DIST = 1.8;
+  const PATCH = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326&STYLES=&FORMAT=image/jpeg';
+  const detail = { box: null, loading: null, movedAt: 0, failedAt: 0 };
+  const sphere = new THREE.Sphere(new THREE.Vector3(), 1), hitPt = new THREE.Vector3(), ndc = new THREE.Vector2();
+  const wrapLon = x => ((((x % 360) + 540) % 360) - 180);
+
+  // Lat/lon bounds of the visible surface, sampled with a 5x5 grid of rays.
+  function viewBox() {
+    const lats = [], lons = [], ref = wrapLon(cam.lon);
+    for (const x of [-1, -0.5, 0, 0.5, 1]) for (const y of [-1, -0.5, 0, 0.5, 1]) {
+      raycaster.setFromCamera(ndc.set(x, y), camera);
+      if (!raycaster.ray.intersectSphere(sphere, hitPt)) continue;
+      lats.push(Math.asin(THREE.MathUtils.clamp(hitPt.y, -1, 1)) / D2R);
+      lons.push(ref + wrapLon(Math.atan2(-hitPt.z, hitPt.x) / D2R - ref));
+    }
+    if (lats.length < 12) return null; // mostly space in view
+    const box = { w: Math.min(...lons), e: Math.max(...lons), s: Math.min(...lats), n: Math.max(...lats) };
+    return box.e - box.w > 120 ? null : box; // looking across a pole
+  }
+
+  // Is the view inside the patch we have, and is that patch fine enough?
+  function covers(box, view) {
+    const half = (view.e - view.w) / 2, bc = (box.w + box.e) / 2;
+    const c = bc + wrapLon((view.w + view.e) / 2 - bc);
+    return c - half >= box.w && c + half <= box.e && view.s >= box.s && view.n <= box.n
+      && box.e - box.w < (view.e - view.w) * 3;
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  function detailTexture(img) {
+    const t = new THREE.Texture(img);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.generateMipmaps = false;
+    t.minFilter = THREE.LinearFilter;
+    t.needsUpdate = true;
+    return t;
+  }
+
+  function requestDetail(view) {
+    const mx = (view.e - view.w) * 0.2, my = (view.n - view.s) * 0.2;
+    let w = view.w - mx, e = view.e + mx;
+    const s = Math.max(-90, view.s - my), n = Math.min(90, view.n + my);
+    // WMS can't wrap the date line, so keep the patch on the view's side of it.
+    const shift = wrapLon((w + e) / 2) - (w + e) / 2;
+    w = Math.max(-180, w + shift); e = Math.min(180, e + shift);
+    let W = Math.min(2048, Math.ceil(host.clientWidth * pixelRatio * 1.2));
+    let H = Math.round(W * (n - s) / Math.max(1e-6, (e - w) * Math.cos(((s + n) / 2) * D2R)));
+    if (H > 2048) { W = Math.round(W * 2048 / H); H = 2048; }
+    W = Math.max(64, W); H = Math.max(64, H);
+    const url = layer => `${PATCH}&LAYERS=${layer}&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}`;
+    const token = detail.loading = {};
+    Promise.all([loadImage(url('BlueMarble_NextGeneration')), loadImage(url('VIIRS_Black_Marble'))]).then(([day, night]) => {
+      if (detail.loading !== token) return;
+      detail.loading = null;
+      uniforms.detailDay.value?.dispose();
+      uniforms.detailNight.value?.dispose();
+      uniforms.detailDay.value = detailTexture(day);
+      uniforms.detailNight.value = detailTexture(night);
+      uniforms.detailBox.value.set(w, s, e - w, n - s);
+      detail.box = { w, e, s, n };
+      invalidate();
+    }).catch(() => {
+      if (detail.loading === token) detail.loading = null;
+      detail.failedAt = performance.now();
+    });
+  }
+
+  // Runs every frame: fades the patch with altitude and, once the camera has
+  // rested for a moment, fetches a new patch if the view has moved off it.
+  function detailTick(now, dt, moved) {
+    if (moved) detail.movedAt = now;
+    const target = detail.box && cam.dist < DETAIL_DIST + 0.1 ? 1 : 0;
+    const u = uniforms.uDetail;
+    if (u.value !== target) {
+      u.value = target > u.value ? Math.min(target, u.value + dt / 400) : Math.max(target, u.value - dt / 400);
+      dirty = true;
+    }
+    if (cam.dist >= DETAIL_DIST || anim || pointers.size || detail.loading) return;
+    if (now - detail.movedAt < 350 || now - detail.failedAt < 5000) return;
+    const view = viewBox();
+    if (view && !(detail.box && covers(detail.box, view))) requestDetail(view);
   }
 
   // --- Main loop ---
@@ -440,7 +597,8 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
         vel.lon *= decay; vel.lat *= decay;
       }
       const idle = now - lastInteract > 5000;
-      if (mode === 'intro' || (mode === 'globe' && idle)) cam.lon -= 0.035 * f;
+      // Idle spin, slowed down near the surface so it stays a gentle drift.
+      if (mode === 'intro' || (mode === 'globe' && idle)) cam.lon -= 0.035 * Math.min(1, (cam.dist - 1) / 1.9) * f;
     }
     const ease8 = 1 - 0.92 ** f;
     offset.x += (offsetTarget.x - offset.x) * ease8;
@@ -449,7 +607,8 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
     if (Math.abs(offsetTarget.y - offset.y) < 0.2) offset.y = offsetTarget.y;
 
     const w = host.clientWidth, h = host.clientHeight;
-    const key = `${cam.lat.toFixed(4)},${cam.lon.toFixed(4)},${cam.dist.toFixed(4)},${offset.x.toFixed(1)},${offset.y.toFixed(1)},${w},${h}`;
+    const key = `${cam.lat.toFixed(5)},${cam.lon.toFixed(5)},${cam.dist.toFixed(5)},${offset.x.toFixed(1)},${offset.y.toFixed(1)},${w},${h}`;
+    detailTick(now, dt, key !== lastKey);
     if (!dirty && key === lastKey) return;
     dirty = false;
     lastKey = key;
@@ -505,8 +664,12 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, re
       if (name === 'night') uniforms.uNight.value = on ? 1 : 0;
       if (name in ANIM_UNIFORMS) uniforms[ANIM_UNIFORMS[name][0]].value = on ? 1 : 0;
     },
-    // frames: [{ time: Date, url }], oldest first.
-    setFrames(name, frames) { return anims[name].setFrames(frames); },
+    // frames: [{ time: Date, url } | { time: Date, image }], oldest first.
+    // box: { w, s, e, n } for layers that cover only part of the globe.
+    setFrames(name, frames, box) {
+      if (box && name === 'fcst') uniforms.fcstBox.value.set(box.w, box.s, box.e - box.w, box.n - box.s);
+      return anims[name].setFrames(frames);
+    },
     setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; },
     seek(name, i) { return anims[name].seek(i); },
     sunInfo: () => astro(),

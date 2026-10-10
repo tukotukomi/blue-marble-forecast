@@ -578,3 +578,16 @@ body.is-fullscreen #fullscreen .fs-exit { display: block; }
 @media (max-width: 860px) {
   .top-actions .round { width: 38px; height: 38px; }
 }
+
+/* The Earth can be dragged on every screen, not just Globe and Region. */
+.globe:not([data-mode="intro"]) canvas { cursor: grab; }
+.globe:not([data-mode="intro"]) canvas:active { cursor: grabbing; }
+@media (max-width: 420px) {
+  /* Five buttons plus the clock: keep the phone top bar inside the screen. */
+  .topbar { padding-left: 12px; padding-right: 12px; }
+  .top-actions { gap: 5px; }
+  .top-actions .round { width: 34px; height: 34px; }
+  .top-actions .round svg { width: 18px; height: 18px; }
+  .lang { height: 34px; padding: 0 8px; }
+  .clock { font-size: 15px; }
+}

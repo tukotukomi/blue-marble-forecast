@@ -1,6 +1,7 @@
 import { CITIES } from './cities.js';
 import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js';
-import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchRadarFrames } from './data.js';
+import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchRadarFrames, fetchPlaces } from './data.js';
+import { fetchForecastRain } from './forecast-rain.js';
 import { createGlobe } from './globe.js';
 import { setMusic, blip, unlock } from './audio.js';
 import { LANGUAGES, detectLang, setLang, getLang, locale, searchLang, t, applyStatic } from './i18n.js';
@@ -37,7 +38,8 @@ const state = {
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, sat: false, radar: false, ...store.get('layers', {}) },
+  layers: { night: true, sat: false, radar: false, fcst: false, ...store.get('layers', {}) },
+  places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',
   fc: null, nws: null, pollen: null, cities: [],
@@ -91,6 +93,8 @@ function countryName(cc) {
 const cityName = c => (c && (getLang() === 'zh-cn' ? c.zh : getLang() === 'es' ? c.es : null)) || c?.name || '';
 function placeName(l) {
   if (l.city) return cityName(cityByName(l.city));
+  if (l.names) return cityName(l.names);
+  if (l.nearNames) return t('place.near', { city: cityName(l.nearNames) });
   if (l.near) return t('place.near', { city: cityName(cityByName(l.near)) });
   if (l.mine) return t('place.mine');
   return l.name || fmtCoord(l.lat, l.lon);
@@ -117,6 +121,8 @@ const globe = createGlobe(globeHost, {
   safeArea: () => safe,
   onDrag: closePick,
   onLayerFrame,
+  onLabelClick: openCity,
+  onNeedWeather,
   onPick(lat, lon, x, y) {
     closePick();
     pickCard = document.createElement('div');
@@ -128,16 +134,18 @@ const globe = createGlobe(globeHost, {
       <button class="pill small" type="button">${esc(t('pick.view'))}</button>`;
     pickCard.querySelector('button').addEventListener('click', () => {
       closePick();
-      openLocation({ near: near?.name, region: '', cc: near?.cc || '', lat, lon, picked: true });
+      openLocation({ nearNames: near && namesOf(near), region: '', cc: near?.cc || '', lat, lon, picked: true });
     });
     document.body.appendChild(pickCard);
   },
 });
 if (!globe) document.body.classList.add('no-webgl');
 
+const namesOf = c => ({ name: c.name, es: c.es, zh: c.zh });
+
 function nearestCity(lat, lon, maxDeg) {
   let best = null, bd = Infinity;
-  for (const c of CITIES) {
+  for (const c of [...CITIES, ...state.places]) {
     const d = Math.hypot(c.lat - lat, (c.lon - lon) * Math.cos(lat * Math.PI / 180));
     if (d < bd) { bd = d; best = c; }
   }
@@ -161,20 +169,56 @@ function renderLabel(item, mode) {
     <span class="g-name">${name}</span><b class="g-temp">${T(wx.current.temperature_2m)}</b>`;
 }
 
+// Hand-picked cities show from the whole-globe view (tier 1) or a little
+// closer (tier 2); the Natural Earth places carry their own map zoom level.
+const curatedZoom = c => (c.tier === 1 ? 0 : 3.5);
+
 function updateMarkers() {
   if (!globe) return;
   const v = state.viewing;
-  const items = [{ ...v, home: true }];
-  for (const c of state.cities) {
+  const curated = state.cities.length ? state.cities : CITIES.map(c => ({ ...c }));
+  // The same objects are passed every time so weather fetched for a city stays with it.
+  const items = [{ ...v, home: true, name: placeName(v) }];
+  for (const c of [...curated, ...state.places]) {
+    c.minZoom ??= curatedZoom(c);
     if (Math.abs(c.lat - v.lat) < 0.3 && Math.abs(c.lon - v.lon) < 0.3) continue; // don't double up on the viewed city
-    items.push({ ...c, onClick: openCity });
+    items.push(c);
   }
   globe.setMarkers(items);
 }
 
 function openCity(c) {
   blip('select');
-  openLocation({ city: c.name, region: '', cc: c.cc, lat: c.lat, lon: c.lon });
+  if (cityByName(c.name)?.lat === c.lat) openLocation({ city: c.name, region: '', cc: c.cc, lat: c.lat, lon: c.lon });
+  else openLocation({ names: namesOf(c), region: c.region || '', cc: c.cc, lat: c.lat, lon: c.lon });
+}
+
+// Weather for cities is fetched as their labels first come into view, in
+// batches, so thousands of places don't mean thousands of requests up front.
+const wxQueue = new Set();
+let wxTimer;
+function onNeedWeather(items) {
+  for (const it of items) wxQueue.add(it);
+  clearTimeout(wxTimer);
+  wxTimer = setTimeout(flushWeather, 400);
+}
+async function flushWeather() {
+  const batch = [...wxQueue].slice(0, 80);
+  batch.forEach(it => wxQueue.delete(it));
+  if (!batch.length) return;
+  try {
+    const got = await fetchCities(batch);
+    got.forEach((r, i) => { batch[i].wx = r.wx; });
+    globe?.refreshLabels(new Set(batch));
+  } catch { /* labels just stay without weather */ }
+  if (wxQueue.size) wxTimer = setTimeout(flushWeather, 400);
+}
+
+async function loadPlaces() {
+  try {
+    state.places = await fetchPlaces();
+    updateMarkers();
+  } catch { /* the hand-picked cities still show */ }
 }
 
 // ---------- data loading ----------
@@ -214,7 +258,7 @@ async function loadLocation() {
 
 async function loadCities() {
   try {
-    state.cities = await fetchCities(CITIES);
+    state.cities = (await fetchCities(CITIES)).map(c => ({ ...c, minZoom: curatedZoom(c) }));
     updateMarkers();
     renderTicker();
   } catch { /* globe still works without labels */ }
@@ -621,28 +665,35 @@ const AFTER = {
 };
 
 // ---------- animated precipitation ----------
-// Two looping layers: NASA IMERG satellite rain & snow (global, 30-minute
-// steps, a few hours behind) and NOAA radar (lower 48, minutes behind).
-// They only play on the Globe and Region screens; elsewhere the globe holds
-// the newest frame so it isn't redrawing every frame behind the forecast.
+// Three looping layers: NASA IMERG satellite rain & snow (global, 30-minute
+// steps, a few hours behind), NOAA radar (lower 48, minutes behind) and a
+// 12-hour GFS forecast around the place being viewed (hourly steps). Once
+// playing they keep playing on every screen until paused.
 const anim = {
   playing: true,
   sat: { frames: [], idx: -1, status: 'off' },   // status: off | loading | ready | error
   radar: { frames: [], idx: -1, status: 'off' },
+  fcst: { frames: [], idx: -1, status: 'off' },
 };
-const ANIM_SOURCES = { sat: { fetch: fetchSatFrames, everyMin: 15 }, radar: { fetch: fetchRadarFrames, everyMin: 5 } };
+const ANIM_KEYS = ['sat', 'radar', 'fcst'];
+const ANIM_SOURCES = {
+  sat: { fetch: fetchSatFrames, everyMin: 15 },
+  radar: { fetch: fetchRadarFrames, everyMin: 5 },
+  fcst: { fetch: () => fetchForecastRain(state.viewing.lat, state.viewing.lon), everyMin: 30 },
+};
 const animTimers = {};
 
 async function refreshFrames(name) {
   const a = anim[name];
   if (!a.frames.length) { a.status = 'loading'; updateLayersUI(); }
   try {
-    const frames = await ANIM_SOURCES[name].fetch();
+    const out = await ANIM_SOURCES[name].fetch();
     if (!state.layers[name]) return;
+    const frames = Array.isArray(out) ? out : out.frames; // the forecast also returns its box
     a.frames = frames;
     a.status = 'ready';
     updateLayersUI();
-    await globe?.setFrames(name, frames);
+    await globe?.setFrames(name, frames, out.box);
   } catch {
     if (!a.frames.length) { a.status = 'error'; updateLayersUI(); }
   }
@@ -662,9 +713,8 @@ function setLayer(name, on) {
   }
 }
 
-const animActive = () => state.view === 'globe' || state.view === 'region';
 function applyPlaying() {
-  globe?.setPlaying(anim.playing && animActive());
+  globe?.setPlaying(anim.playing);
   const btn = $('#anim-play');
   if (btn) {
     btn.innerHTML = anim.playing ? PAUSE_ICON : PLAY_ICON;
@@ -681,9 +731,10 @@ function frameLabel(name) {
   const f = a.frames[a.idx];
   if (!f) return t('anim.loading');
   const time = new Intl.DateTimeFormat(locale(), { hour: 'numeric', minute: '2-digit', hour12: use12h() }).format(f.time);
-  const mins = Math.max(0, Math.round((Date.now() - f.time) / 60e3));
+  // Negative = in the past ("6 minutes ago"), positive = forecast ("in 3 hours").
+  const mins = Math.round((f.time - Date.now()) / 60e3);
   const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
-  return `${time} · ${mins < 90 ? rtf.format(-mins, 'minute') : rtf.format(-Math.round(mins / 60), 'hour')}`;
+  return `${time} · ${Math.abs(mins) < 90 ? rtf.format(mins, 'minute') : rtf.format(Math.round(mins / 60), 'hour')}`;
 }
 
 function onLayerFrame(name, idx) {
@@ -695,7 +746,7 @@ function onLayerFrame(name, idx) {
 
 function layersHTML() {
   const sw = (key, label) => `<label class="switch"><input type="checkbox" data-layer="${key}" ${state.layers[key] ? 'checked' : ''}><span></span>${esc(label)}</label>`;
-  const rows = ['sat', 'radar'].filter(k => state.layers[k]).map(k => {
+  const rows = ANIM_KEYS.filter(k => state.layers[k]).map(k => {
     const a = anim[k];
     return `<div class="anim-row">
       <div class="anim-head"><b>${esc(t(`anim.${k}`))}</b><span id="anim-${k}-time">${esc(frameLabel(k))}</span></div>
@@ -704,7 +755,7 @@ function layersHTML() {
     </div>`;
   }).join('');
   return `<div id="layers">
-    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}</div>
+    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('fcst', t('globe.fcst'))}</div>
     ${rows ? `<div class="anim"><button type="button" class="anim-play" id="anim-play"></button><div class="anim-rows">${rows}</div></div>
       <p class="fine anim-note">${esc(t('anim.note'))}</p>` : ''}
   </div>`;
@@ -721,7 +772,7 @@ function bindLayers() {
     anim.playing = !anim.playing;
     applyPlaying();
   });
-  for (const k of ['sat', 'radar']) {
+  for (const k of ANIM_KEYS) {
     $(`#anim-${k}-range`)?.addEventListener('input', e => {
       anim.playing = false;
       applyPlaying();
@@ -748,6 +799,7 @@ function openLocation(loc, { asHome = false } = {}) {
   state.fc = null;
   render(false);
   loadLocation();
+  if (state.layers.fcst) refreshFrames('fcst'); // the forecast follows the viewed place
   if (globe) {
     const m = state.view === 'globe' || state.view === 'region' ? 'region' : 'park';
     if (state.view === 'globe') go('now', { sound: false });
@@ -1020,6 +1072,7 @@ await setLang(detectLang());
 applyLanguage();
 loadLocation();
 loadCities();
+loadPlaces();
 globe?.setMode('intro');
 globe?.ready.then(() => document.body.classList.add('globe-ready'));
 // Restore the layers the visitor left switched on.

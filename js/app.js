@@ -40,7 +40,7 @@ const state = {
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, sat: true, radar: false, fcst: false, ...store.get('layers', {}) },
+  layers: { night: true, sat: true, radar: true, fcst: false, ...store.get('layers', {}) },
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',

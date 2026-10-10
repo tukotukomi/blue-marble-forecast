@@ -2,6 +2,7 @@ import { CITIES } from './cities.js';
 import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js';
 import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchRadarFrames, fetchPlaces } from './data.js';
 import { fetchForecastRain } from './forecast-rain.js';
+import { initGamepad } from './gamepad.js';
 import { createGlobe } from './globe.js';
 import { setMusic, blip, unlock } from './audio.js';
 import { LANGUAGES, detectLang, setLang, getLang, locale, searchLang, t, applyStatic } from './i18n.js';
@@ -1150,6 +1151,51 @@ function start() {
   go(initial, { sound: false });
 }
 $('#start').addEventListener('click', start);
+
+// ---------- game controller ----------
+initGamepad({
+  started: () => state.started,
+  start,
+  pan: (dx, dy) => { closePick(); globe?.pan(dx, dy); },
+  zoom: f => globe?.zoom(f),
+  // A with nothing selected: open the spot under the centre reticle (Globe and
+  // Region), or the middle of the visible globe on the forecast screens.
+  pickCenter() {
+    if (pickCard) return pickCard.querySelector('button')?.click();
+    const free = ['globe', 'region'].includes(state.view) || document.body.classList.contains('explore');
+    const x = free || innerWidth <= 860 ? innerWidth / 2 : innerWidth * 0.7;
+    const y = free || innerWidth > 860 ? innerHeight / 2 : innerHeight * 0.28;
+    globe?.pickAt(x, y);
+  },
+  back() {
+    const dlg = document.querySelector('dialog[open]');
+    if (!langMenu.hidden) closeLangMenu(true);
+    else if (dlg) dlg.close();
+    else if (pickCard) closePick();
+    else if (document.body.classList.contains('explore')) setExplore(false);
+    else document.activeElement?.blur?.();
+  },
+  explore() {
+    if (!['globe', 'region'].includes(state.view)) go('globe');
+    setExplore(!document.body.classList.contains('explore'));
+  },
+  globeView: () => go('globe'),
+  settings() {
+    const d = $('#info-dialog');
+    if (d.open) d.close(); else { blip('select'); d.showModal(); }
+  },
+  playPause() {
+    if (!ANIM_KEYS.some(k => state.layers[k])) return;
+    anim.playing = !anim.playing;
+    applyPlaying();
+    toast(t(anim.playing ? 'anim.play' : 'anim.pause'));
+  },
+  screen(dir) { if (!document.querySelector('dialog[open]')) step(dir); },
+  connected(on) {
+    document.body.classList.toggle('has-pad', on);
+    toast(t(on ? 'pad.connected' : 'pad.disconnected'));
+  },
+});
 
 await setLang(detectLang());
 applyLanguage();

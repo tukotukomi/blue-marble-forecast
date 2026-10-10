@@ -733,5 +733,24 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; },
     seek(name, i) { return anims[name].seek(i); },
     sunInfo: () => astro(),
+    // Controller input (gamepad.js): spin by screen pixels like a drag, zoom
+    // by a factor, and "tap" a screen point.
+    pan(dx, dy) {
+      if (!interactive()) return;
+      const k = (cam.dist - 1) * 0.1 + 0.0008;
+      anim = null; vel.lat = vel.lon = 0; lastInteract = performance.now();
+      cam.lon -= dx * k; cam.lat = THREE.MathUtils.clamp(cam.lat + dy * k, -85, 85);
+    },
+    zoom(factor) {
+      if (!interactive()) return;
+      anim = null; lastInteract = performance.now();
+      zoomBy(factor);
+    },
+    pickAt(x, y) {
+      if (!interactive()) return false;
+      const hit = pick(x, y);
+      if (hit) onPick?.(hit.lat, hit.lon, x, y);
+      return !!hit;
+    },
   };
 }

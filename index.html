@@ -28,6 +28,8 @@
 <body data-view="now">
   <div id="globe" class="globe" aria-hidden="true"></div>
   <div id="labels" class="labels"></div>
+  <!-- Centre marker for controller users: A picks the spot under it. -->
+  <div id="reticle" class="reticle" aria-hidden="true"></div>
 
   <header class="topbar">
     <div class="brand">
@@ -143,6 +145,10 @@
         </div>
         <button id="install-btn" class="pill small" type="button" data-i18n="install.button" hidden>Install</button>
       </div>
+    </section>
+    <section class="setting pad-help" aria-labelledby="pad-label">
+      <h3 id="pad-label" data-i18n="pad.title">Controller</h3>
+      <ul class="pad-keys" data-i18n="pad.help" data-i18n-html></ul>
     </section>
     <section class="about" aria-labelledby="about-heading">
     <h3 id="about-heading" class="about-title" data-i18n="about.title">About Global Forecast</h3>

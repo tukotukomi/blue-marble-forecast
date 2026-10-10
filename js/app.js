@@ -1,6 +1,6 @@
 import { CITIES } from './cities.js';
 import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js';
-import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchRadarFrames, fetchPlaces } from './data.js';
+import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchPlaces } from './data.js';
 import { fetchForecastRain } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
 import { createGlobe } from './globe.js';
@@ -39,7 +39,7 @@ const state = {
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, sat: false, radar: false, fcst: false, ...store.get('layers', {}) },
+  layers: { night: true, sat: true, radar: false, fcst: false, ...store.get('layers', {}) },
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',
@@ -668,8 +668,9 @@ const AFTER = {
 
 // ---------- animated precipitation ----------
 // Three looping layers: NASA IMERG satellite rain & snow (global, 30-minute
-// steps, a few hours behind), NOAA radar (lower 48, minutes behind) and a
-// 12-hour GFS forecast around the place being viewed (hourly steps). Once
+// steps, a few hours behind), high resolution radar (ECCC's North American
+// mosaic, minutes behind) and a 12-hour forecast (HRRR in the U.S., DWD
+// ICON-EU in Europe, GFS elsewhere) around the place being viewed. Once
 // playing they keep playing on every screen until paused.
 const anim = {
   playing: true,
@@ -680,7 +681,7 @@ const anim = {
 const ANIM_KEYS = ['sat', 'radar', 'fcst'];
 const ANIM_SOURCES = {
   sat: { fetch: fetchSatFrames, everyMin: 15 },
-  radar: { fetch: fetchRadarFrames, everyMin: 5 },
+  radar: { fetch: fetchHiResRadar, everyMin: 6 },
   fcst: { fetch: () => fetchForecastRain(state.viewing.lat, state.viewing.lon), everyMin: 30 },
 };
 const animTimers = {};
@@ -843,7 +844,7 @@ function updateHiRes(name) {
   const fullPxPerDeg = 2048 / (full.e - full.w);
   if (W / (box.e - box.w) < fullPxPerDeg * 1.5) return revert();
   hiRes[name] = box;
-  globe.setFrames(name, a.frames.map(f => ({ time: f.time, url: f.urlFor(box, W, H) })), box, { keepIndex: true });
+  globe.setFrames(name, a.frames.map(f => ({ time: f.time, url: f.urlFor(box, W, H), transform: f.transform })), box, { keepIndex: true });
 }
 
 // ---------- locations ----------

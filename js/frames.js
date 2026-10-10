@@ -39,6 +39,8 @@ function withImage(tex, img) {
   return makeTexture(img);
 }
 
+const urlsOf = f => (f.image ? [] : [].concat(f.url ?? []).filter(Boolean));
+
 export class FrameLayer {
   // forward: a forecast, which starts at "now" (its first frame) rather than
   // at the newest frame like the observed layers.
@@ -65,7 +67,7 @@ export class FrameLayer {
   // takes effect when the first of them is actually on screen.
   async setFrames(frames, { keepIndex = false, box = null } = {}) {
     this.pendingBox = box;
-    const keep = new Set(frames.map(f => f.url).filter(Boolean));
+    const keep = new Set(frames.flatMap(urlsOf));
     for (const [url, p] of this.blobs) {
       if (!keep.has(url)) { p.then(u => u && URL.revokeObjectURL(u)); this.blobs.delete(url); }
     }
@@ -88,21 +90,38 @@ export class FrameLayer {
   async prefetch() {
     // Two at a time, starting from the frame on screen and going the way the
     // loop plays, so the next frames are ready first.
-    const urls = this.frames.map(f => f.url);
     const from = Math.max(0, this.idx);
-    const queue = [...urls.slice(from), ...urls.slice(0, from)].filter(Boolean);
+    const queue = [...this.frames.slice(from), ...this.frames.slice(0, from)].flatMap(urlsOf);
     const worker = async () => { while (queue.length) await this.blob(queue.shift()); };
     await Promise.all([worker(), worker()]);
   }
 
-  async decode(i) {
-    if (this.frames[i].image) return this.frames[i].image; // drawn in the page (forecast)
-    const src = await this.blob(this.frames[i].url);
+  async load(url) {
+    const src = await this.blob(url);
     if (!src) return null;
     const img = new Image();
     img.src = src;
     try { await img.decode(); } catch { return null; }
     return img;
+  }
+
+  // A frame is a ready image (drawn in the page), one URL, or several URLs
+  // stacked into one picture (e.g. radar rain + snow). An optional
+  // transform(canvas) recolours it (e.g. DWD's palette to ours).
+  async decode(i) {
+    const f = this.frames[i];
+    if (f.image) return f.image;
+    const urls = urlsOf(f);
+    if (urls.length === 1 && !f.transform) return this.load(urls[0]);
+    const imgs = await Promise.all(urls.map(u => this.load(u)));
+    const first = imgs.find(Boolean);
+    if (!first) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = first.naturalWidth; canvas.height = first.naturalHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: !!f.transform });
+    for (const img of imgs) if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    f.transform?.(ctx, canvas.width, canvas.height);
+    return canvas;
   }
 
   async seek(i) {

@@ -203,3 +203,35 @@ export async function fetchPlaces() {
     name, es: es || undefined, zh: zh || undefined, cc, lat, lon, minZoom, region,
   }));
 }
+
+// ---- High resolution radar: North America ----
+
+// Environment and Climate Change Canada's 1 km radar mosaic covers Canada
+// and the U.S. (it includes NOAA's NEXRAD radars) every 6 minutes. Rain and
+// snow are separate layers, and the server draws one per request, so each
+// frame stacks two images. NOAA nowCOAST (U.S. only) is the fallback.
+const GEOMET = 'https://geo.weather.gc.ca/geomet';
+export const NA_RADAR_BOX = { w: -170.32, s: 16.93, e: -50, n: 67.19 };
+
+async function fetchEcccRadar(minutes = 120, stepMin = 12) {
+  const res = await fetch(`${GEOMET}?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0&LAYERS=RADAR_1KM_RRAI`);
+  if (!res.ok) throw new Error(`GeoMet ${res.status}`);
+  const dim = (await res.text()).match(/<Dimension name="time"[^>]*>([^<]+)</)?.[1];
+  if (!dim) throw new Error('No radar times');
+  // "start/end/PT6M": step back from the newest scan.
+  const end = Date.parse(dim.split(',').pop().split('/')[1] ?? dim.split(',').pop());
+  if (Number.isNaN(end)) throw new Error('Bad radar times');
+  const count = Math.floor(minutes / stepMin) + 1;
+  const frames = Array.from({ length: count }, (_, k) => {
+    const time = new Date(end - (count - 1 - k) * stepMin * 60e3);
+    const urlFor = ({ w, s, e, n }, W, H) => ['RADAR_1KM_RRAI', 'RADAR_1KM_RSNO'].map(layer =>
+      `${GEOMET}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=${layer}&STYLES=&CRS=EPSG:4326`
+      + `&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${iso(time)}`);
+    return { time, urlFor, url: urlFor(NA_RADAR_BOX, 3072, 1284) };
+  });
+  return { frames, box: NA_RADAR_BOX, native: 0.01 }; // 1 km mosaic
+}
+
+export async function fetchHiResRadar() {
+  try { return await fetchEcccRadar(); } catch { return fetchRadarFrames(); }
+}

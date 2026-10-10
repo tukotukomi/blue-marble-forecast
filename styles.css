@@ -239,12 +239,12 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 .feels { color: var(--ink-soft); font-size: 14px; margin-top: 2px; }
 .hilo-row { display: flex; gap: 16px; align-items: center; margin-top: 10px; font-size: 14px; color: var(--ink-soft); }
 .hilo-row b { font-size: 20px; }
-.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0 14px; }
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 12px 0 0; }
 .stat { background: rgba(255, 255, 255, 0.7); border-radius: 16px; padding: 10px 10px; box-shadow: inset 0 0 0 1px rgba(34, 50, 74, 0.06); }
 .stat span { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .stat b { font-size: 14px; }
 .wind-arrow { display: inline-block; font-style: normal; color: var(--wii-deep); }
-.hours { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.hours { display: flex; gap: 6px; overflow-x: auto; margin-top: 16px; padding-bottom: 4px; scrollbar-width: thin; }
 .hour { flex: none; width: 62px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 2px; border-radius: 16px; background: rgba(255, 255, 255, 0.55); }
 .h-time { font-size: 11px; color: var(--ink-soft); font-weight: 700; }
 
@@ -654,7 +654,8 @@ body.has-pad .pad-help { display: block; }
   .feels { font-size: 12px; margin-top: 0; }
   .hilo-row { gap: 12px; margin-top: 4px; font-size: 12px; }
   .hilo-row b { font-size: 16px; }
-  .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+  .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 0; }
+  .hours { margin-top: 10px; }
   .stat { padding: 7px 8px; border-radius: 12px; }
   .stat span { font-size: 10px; }
   .stat b { font-size: 13px; }

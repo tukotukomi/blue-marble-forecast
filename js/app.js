@@ -543,16 +543,16 @@ const RENDER = {
           <div class="hilo-row"><span>${esc(t('now.high'))} <b class="hi">${T(d.hi)}</b></span><span>${esc(t('now.low'))} <b class="lo">${T(d.lo)}</b></span><span class="pop" title="${esc(t('pop.title'))}">${dropGlyph()}${d.pop ?? 0}%</span></div>
         </div>
       </div>
+      <div class="hours" role="list" aria-label="${esc(t('now.next12'))}">${hrs.map(h => `<div class="hour" role="listitem">
+        <span class="h-time">${clock(h.hour)}</span>${iconFor(h.code, h.isDay, { size: 40 })}<b>${T(h.temp)}</b>
+        <span class="pop">${h.pop ?? 0}%</span></div>`).join('')}</div>
       <div class="stats">
         <div class="stat"><span>${esc(t('stat.humidity'))}</span><b>${c.relative_humidity_2m}%</b></div>
         <div class="stat"><span>${esc(t('stat.wind'))}</span><b><i class="wind-arrow" style="transform:rotate(${c.wind_direction_10m + 180}deg)">↑</i> ${esc(compass(c.wind_direction_10m))} ${esc(W(c.wind_speed_10m))}</b></div>
         <div class="stat"><span>${esc(t('stat.uv'))}</span><b>${Math.round(uvNow)} · ${esc(uvInfo(uvNow).cat)}</b></div>
         <div class="stat"><span>${esc(t('stat.sunrise'))}</span><b>${isoClock(d.sunrise)}</b></div>
         <div class="stat"><span>${esc(t('stat.sunset'))}</span><b>${isoClock(d.sunset)}</b></div>
-      </div>
-      <div class="hours" role="list" aria-label="${esc(t('now.next12'))}">${hrs.map(h => `<div class="hour" role="listitem">
-        <span class="h-time">${clock(h.hour)}</span>${iconFor(h.code, h.isDay, { size: 40 })}<b>${T(h.temp)}</b>
-        <span class="pop">${h.pop ?? 0}%</span></div>`).join('')}</div>`;
+      </div>`;
   },
   today: () => dayScreen(0),
   tomorrow: () => dayScreen(1),

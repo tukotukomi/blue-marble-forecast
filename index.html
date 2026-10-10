@@ -7,6 +7,13 @@
   <meta name="description" content="A modern remake of the Wii Forecast Channel: a spinning NASA globe, local and world forecasts from NOAA, UV index, laundry check and pollen counts.">
   <meta name="theme-color" content="#0b1a33">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <!-- Home-screen app: manifest for Android/desktop, apple-* tags for iPhone and iPad. -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Forecast">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -126,6 +133,15 @@
           <button type="button" role="radio" data-scale="2x">2x</button>
           <button type="button" role="radio" data-scale="1x">1x</button>
         </div>
+      </div>
+    </section>
+    <section class="setting install" id="install" aria-labelledby="install-label" hidden>
+      <div class="setting-row">
+        <div>
+          <h3 id="install-label" data-i18n="install.title">Install the app</h3>
+          <p class="fine" id="install-text"></p>
+        </div>
+        <button id="install-btn" class="pill small" type="button" data-i18n="install.button" hidden>Install</button>
       </div>
     </section>
     <section class="about" aria-labelledby="about-heading">

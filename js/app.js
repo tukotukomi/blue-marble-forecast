@@ -1000,6 +1000,35 @@ function syncFullscreen() {
   fsBtn.setAttribute('aria-pressed', String(on));
 }
 
+// ---------- home-screen app ----------
+// The service worker lets the installed app open offline and caches the big
+// globe textures (see sw.js). Service workers need https (or localhost).
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* the site works without it */ });
+}
+const standalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installPrompt = null; // Chrome/Edge/Android hand us a real install dialog
+function renderInstall() {
+  $('#install').hidden = standalone;
+  $('#install-btn').hidden = !installPrompt;
+  $('#install-text').textContent = t(installPrompt ? 'install.ready' : isIOS ? 'install.ios' : 'install.other');
+}
+addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  renderInstall();
+});
+addEventListener('appinstalled', () => { installPrompt = null; $('#install').hidden = true; });
+$('#install-btn').addEventListener('click', async () => {
+  if (!installPrompt) return;
+  blip('select');
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  renderInstall();
+});
+
 // ---------- explore mode (Globe & Region) ----------
 // Hides the bars, panel, dock and ticker so the Earth gets the whole screen,
 // which matters most on phones. A small pill brings everything back.
@@ -1019,6 +1048,7 @@ $('#explore-exit').addEventListener('click', () => { blip('select'); setExplore(
 // Re-render every piece of text after a language change.
 function applyLanguage() {
   renderLangButton();
+  renderInstall();
   syncFullscreen();
   if (getLang() === 'zh-cn' && !$('#font-zh')) {
     const link = Object.assign(document.createElement('link'), {

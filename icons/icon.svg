@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Source art for the home-screen icons (rendered to PNG). Full-bleed
+       square: iOS and Android apply their own corner masks. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d2a5c"/>
+      <stop offset="1" stop-color="#050d22"/>
+    </linearGradient>
+    <radialGradient id="earth" cx="38%" cy="32%" r="78%">
+      <stop offset="0" stop-color="#9fe2ff"/>
+      <stop offset=".45" stop-color="#2f8de4"/>
+      <stop offset="1" stop-color="#103f8c"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset=".78" stop-color="#5fc4ff" stop-opacity="0"/>
+      <stop offset=".9" stop-color="#5fc4ff" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#5fc4ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sun" cx="40%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#fffbd0"/><stop offset=".45" stop-color="#ffd84a"/><stop offset="1" stop-color="#ff9a1f"/>
+    </radialGradient>
+    <linearGradient id="cloud" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d6e2f2"/>
+    </linearGradient>
+    <clipPath id="ball"><circle cx="256" cy="268" r="168"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <!-- Artwork kept inside the centre ~80% so platform masks never clip it. -->
+  <g transform="translate(246 262) scale(0.8) translate(-256 -256)">
+  <g fill="#fff" opacity=".7">
+    <circle cx="70" cy="80" r="3"/><circle cx="440" cy="60" r="2.5"/><circle cx="460" cy="190" r="2"/>
+    <circle cx="52" cy="230" r="2"/><circle cx="118" cy="40" r="1.8"/><circle cx="380" cy="470" r="2.2"/>
+  </g>
+  <circle cx="256" cy="268" r="200" fill="url(#glow)"/>
+  <circle cx="256" cy="268" r="168" fill="url(#earth)"/>
+  <g clip-path="url(#ball)" fill="none" stroke="#7fe0a0" stroke-width="30" stroke-linecap="round" opacity=".95">
+    <path d="M110 230c40-30 75 12 115-8s45-58 95-36 52 58 52 58"/>
+    <path d="M100 330c58 0 70-34 118-22s62 46 112 34"/>
+  </g>
+  <ellipse cx="190" cy="168" rx="62" ry="30" fill="#fff" opacity=".55" transform="rotate(-24 190 168)"/>
+  <circle cx="256" cy="268" r="168" fill="none" stroke="#fff" stroke-width="10" opacity=".9"/>
+  <!-- sun peeking over a cloud, the classic forecast icon -->
+  <g transform="translate(370 150)">
+    <g stroke="#ffb02e" stroke-width="14" stroke-linecap="round">
+      <path d="M0-78v-22M0 78v22M-78 0h-22M78 0h22M-55-55l-16-16M55 55l16 16M-55 55l-16 16M55-55l16-16"/>
+    </g>
+    <circle r="56" fill="url(#sun)" stroke="#f08a12" stroke-width="6"/>
+  </g>
+  <g transform="translate(300 220)">
+    <path d="M10 92h150a46 46 0 0 0 4-92 64 64 0 0 0-122-12A48 48 0 0 0 10 92Z" fill="url(#cloud)" stroke="#8fa3c0" stroke-width="7" stroke-linejoin="round"/>
+    <ellipse cx="70" cy="22" rx="28" ry="12" fill="#fff" opacity=".9" transform="rotate(-14 70 22)"/>
+  </g>
+  </g>
+</svg>

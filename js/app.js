@@ -35,12 +35,25 @@ function guessHome() {
   return { city: c.name, region: '', cc: c.cc, lat: c.lat, lon: c.lon };
 }
 
+// Layer switches the visitor has set. Until radar became on by default, every
+// visit saved radar: false even if the switch was never touched, so that saved
+// value is dropped once.
+function savedLayers() {
+  const saved = store.get('layers', {});
+  if (!store.get('radarDefaultOn', false)) {
+    delete saved.radar;
+    store.set('layers', saved);
+    store.set('radarDefaultOn', true);
+  }
+  return saved;
+}
+
 const state = {
   home: store.get('home', null) || guessHome(),
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, sat: true, radar: true, fcst: false, ...store.get('layers', {}) },
+  layers: { night: true, sat: true, radar: true, fcst: false, ...savedLayers() },
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',
@@ -724,9 +737,9 @@ async function refreshFrames(name) {
   }
 }
 
-function setLayer(name, on) {
+function setLayer(name, on, save = true) {
   state.layers[name] = on;
-  store.set('layers', state.layers);
+  if (save) store.set('layers', state.layers);
   for (const k of [name, ...ANIM_KEYS.filter(k => SWITCH_OF[k] === name)]) syncLayer(k);
 }
 
@@ -1253,4 +1266,4 @@ loadPlaces();
 globe?.setMode('intro');
 globe?.ready.then(() => document.body.classList.add('globe-ready'));
 // Restore the layers the visitor left switched on.
-for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night') setLayer(name, on);
+for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night') setLayer(name, on, false);

@@ -39,7 +39,10 @@ function withImage(tex, img) {
 }
 
 export class FrameLayer {
-  constructor({ onChange, onFrame }) {
+  // forward: a forecast, which starts at "now" (its first frame) rather than
+  // at the newest frame like the observed layers.
+  constructor({ onChange, onFrame, forward = false }) {
+    this.forward = forward;
     this.texA = emptyTexture();
     this.texB = emptyTexture();
     this.mix = 0;
@@ -63,8 +66,9 @@ export class FrameLayer {
     }
     this.frames = frames;
     if (!frames.length) return;
-    // Show the newest frame straight away, then fetch the rest in the background.
-    await this.seek(frames.length - 1);
+    // Show the newest observation (or, for a forecast, "now") straight away,
+    // then fetch the rest in the background.
+    await this.seek(this.forward ? 0 : frames.length - 1);
     this.prefetch();
   }
 
@@ -76,8 +80,9 @@ export class FrameLayer {
   }
 
   async prefetch() {
-    // Newest first, two at a time, so the loop fills in from "now" backwards.
-    const queue = this.frames.map(f => f.url).filter(Boolean).reverse();
+    // Two at a time, starting from "now" so the loop fills in from there.
+    const urls = this.frames.map(f => f.url).filter(Boolean);
+    const queue = this.forward ? urls : urls.reverse();
     const worker = async () => { while (queue.length) await this.blob(queue.shift()); };
     await Promise.all([worker(), worker()]);
   }

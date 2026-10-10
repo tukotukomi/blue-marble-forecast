@@ -1,20 +1,61 @@
-// The "next 12 hours" rain animation. No free government service publishes
-// hourly forecast-rain map images worldwide, so this samples NOAA GFS (with
-// HRRR blended in over the U.S.) on a grid of points around the place being
-// viewed, through the same Open-Meteo feed as the rest of the forecast, and
-// paints each hour into an image in the page.
+// The "next 12 hours" rain animation, from two sources:
+//
+// - Lower 48 states: NOAA's HRRR model, the 3 km "forecast radar"
+//   (simulated reflectivity) in 15-minute steps, as map images rendered by
+//   the Iowa Environmental Mesonet (Iowa State University) from NOAA's data.
+// - Everywhere else: no free service publishes forecast-rain map images, so
+//   NOAA GFS hourly precipitation is sampled on a grid around the place
+//   being viewed (through the same Open-Meteo feed as the rest of the
+//   forecast) and painted into images in the page.
 
-const STEP = 2;          // grid spacing, degrees
-const HALF_LAT = 12;     // box half-height, degrees  -> 13 rows
-const HALF_LON = 18;     // box half-width, degrees   -> 19 columns
-const SCALE = 24;        // output pixels per grid cell
 const HOURS = 12;
+
+// ---- HRRR (lower 48) ----
+const IEM = 'https://mesonet.agron.iastate.edu';
+export const HRRR_BOX = { w: -126, s: 24, e: -66, n: 50 };
+const inHrrr = (lat, lon) => lat > HRRR_BOX.s + 1 && lat < HRRR_BOX.n - 1 && lon > HRRR_BOX.w + 1 && lon < HRRR_BOX.e - 1;
+
+async function fetchHrrr() {
+  // Which model run the IEM's images currently come from.
+  const meta = await fetch(`${IEM}/data/gis/images/4326/hrrr/refd_0000.json`, { cache: 'no-store' });
+  if (!meta.ok) throw new Error(`IEM ${meta.status}`);
+  const init = Date.parse((await meta.json()).model_init_utc);
+  if (Number.isNaN(init)) throw new Error('No HRRR run time');
+  const runHour = new Date(init).getUTCHours();
+  const maxMin = runHour % 6 === 0 ? 2160 : 1080; // 36 h runs every 6 h, 18 h otherwise
+  const start = Math.max(0, Math.floor((Date.now() - init) / 60e3 / 30) * 30);
+  const frames = [];
+  for (let m = start; m <= Math.min(start + HOURS * 60, maxMin); m += 30) {
+    const { w, s, e, n } = HRRR_BOX;
+    frames.push({
+      time: new Date(init + m * 60e3),
+      // Layer names are reused by every run, so the run time keeps caches apart.
+      url: `${IEM}/cgi-bin/wms/hrrr/refd.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=refd_${String(m).padStart(4, '0')}`
+        + `&STYLES=&SRS=EPSG:4326&BBOX=${w},${s},${e},${n}&WIDTH=2048&HEIGHT=888&FORMAT=image/png&TRANSPARENT=TRUE&run=${init}`,
+    });
+  }
+  if (frames.length < 2) throw new Error('HRRR run too old');
+  return { frames, box: HRRR_BOX, source: 'hrrr' };
+}
+
+export async function fetchForecastRain(lat, lon) {
+  if (inHrrr(lat, lon)) {
+    try { return await fetchHrrr(); } catch { /* fall back to the GFS grid */ }
+  }
+  return fetchGfsGrid(lat, lon);
+}
+
+// ---- GFS grid (everywhere else) ----
+const STEP = 1;          // grid spacing, degrees (~110 km)
+const HALF_LAT = 8;      // box half-height, degrees  -> 17 rows
+const HALF_LON = 12;     // box half-width, degrees   -> 25 columns (425 points)
+const SCALE = 20;        // output pixels per grid cell
 
 // Radar-style colours by rain rate (mm per hour), interpolated in log space.
 const STOPS = [
-  [0.1, [120, 200, 255, 0.0]],
-  [0.3, [90, 180, 255, 0.55]],
-  [1, [40, 200, 90, 0.75]],
+  [0.08, [120, 200, 255, 0.0]],
+  [0.25, [80, 170, 255, 0.75]],
+  [1, [40, 200, 90, 0.85]],
   [3, [250, 220, 40, 0.85]],
   [8, [250, 130, 20, 0.9]],
   [20, [230, 30, 40, 0.95]],
@@ -36,7 +77,7 @@ function colour(mm) {
 
 const r2 = n => Math.round(n * 100) / 100;
 
-export async function fetchForecastRain(lat, lon) {
+async function fetchGfsGrid(lat, lon) {
   // Snap the box to the grid so small moves reuse the cached request.
   const cLat = Math.max(-90 + HALF_LAT, Math.min(90 - HALF_LAT, Math.round(lat / STEP) * STEP));
   const cLon = Math.round(lon / STEP) * STEP;
@@ -64,10 +105,13 @@ export async function fetchForecastRain(lat, lon) {
   return {
     frames,
     box: { w: lons[0] - STEP / 2, e: lons.at(-1) + STEP / 2, s: lats[0] - STEP / 2, n: lats.at(-1) + STEP / 2 },
+    source: 'gfs',
   };
 }
 
-// Bilinear upsampling of the coarse grid, then colouring per pixel.
+// Catmull-Rom (bicubic) upsampling keeps rain bands rounded instead of the
+// diamond-shaped blobs plain bilinear blending gives, then colours per pixel.
+const cr = (p0, p1, p2, p3, t) => 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
 function paint(grid, rows, cols) {
   const W = cols * SCALE, H = rows * SCALE;
   const canvas = document.createElement('canvas');
@@ -80,8 +124,8 @@ function paint(grid, rows, cols) {
     const gy = (H - 1 - y) / SCALE - 0.5, r0 = Math.floor(gy), fy = gy - r0;
     for (let x = 0; x < W; x++) {
       const gx = x / SCALE - 0.5, c0 = Math.floor(gx), fx = gx - c0;
-      const v = (at(r0, c0) * (1 - fx) + at(r0, c0 + 1) * fx) * (1 - fy)
-        + (at(r0 + 1, c0) * (1 - fx) + at(r0 + 1, c0 + 1) * fx) * fy;
+      const row = r => cr(at(r, c0 - 1), at(r, c0), at(r, c0 + 1), at(r, c0 + 2), fx);
+      const v = cr(row(r0 - 1), row(r0), row(r0 + 1), row(r0 + 2), fy);
       const col = colour(v);
       if (!col) continue;
       const i = (y * W + x) * 4;

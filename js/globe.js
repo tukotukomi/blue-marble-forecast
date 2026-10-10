@@ -188,7 +188,7 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
   const anims = {
     sat: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('sat', i, n, time) }),
     radar: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar', i, n, time) }),
-    fcst: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('fcst', i, n, time) }),
+    fcst: new FrameLayer({ forward: true, onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('fcst', i, n, time) }),
   };
   const ANIM_UNIFORMS = {
     sat: ['uSat', 'satA', 'satB', 'satMix'],

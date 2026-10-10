@@ -949,6 +949,16 @@ function openSearch() {
   $('#loc-q').focus();
 }
 $('#loc-btn').addEventListener('click', openSearch);
+// Back to the home location: its forecast if another place is showing,
+// otherwise just the globe flown back over it (e.g. after exploring).
+$('#home-btn').addEventListener('click', () => {
+  blip('select');
+  const h = state.home;
+  if (!sameLoc(state.viewing, h)) return openLocation(h);
+  if (state.view === 'globe') globe?.setMode('globe', { lat: h.lat, lon: h.lon });
+  else if (state.view === 'region') globe?.setMode('region', { lat: h.lat, lon: h.lon });
+  else globe?.setMode('park', { lat: h.lat, lon: h.lon, ...parkView() });
+});
 $('#loc-q').addEventListener('input', e => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();

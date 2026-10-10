@@ -4,6 +4,7 @@
   "brand": "Blue Marble Forecast",
 
   "top.changeLocation": "更改地点",
+  "top.goHome": "回到家的位置",
   "top.units": "单位：{unit}。点击切换。",
   "top.music": "音乐",
   "top.about": "关于与数据来源",

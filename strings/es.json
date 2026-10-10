@@ -4,6 +4,7 @@
   "brand": "Blue Marble Forecast",
 
   "top.changeLocation": "Cambiar ubicación",
+  "top.goHome": "Ir a la ubicación de casa",
   "top.units": "Unidades: grados {unit}. Haz clic para cambiar.",
   "top.music": "Música",
   "top.about": "Acerca de y fuentes de datos",

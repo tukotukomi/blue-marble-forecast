@@ -44,11 +44,17 @@
       </svg>
       <span data-i18n="brand">Blue Marble Forecast</span>
     </div>
-    <button id="loc-btn" class="loc-chip glass" type="button" data-i18n-attr="aria-label:top.changeLocation" aria-label="Change location">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" fill="#ff5d6c" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="10" r="2.6" fill="#fff"/></svg>
-      <span class="loc-text"><b id="loc-name"></b><small id="loc-sub"></small></span>
-      <svg class="chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-    </button>
+    <div class="loc-wrap">
+      <button id="loc-btn" class="loc-chip glass" type="button" data-i18n-attr="aria-label:top.changeLocation" aria-label="Change location">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" fill="#ff5d6c" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="10" r="2.6" fill="#fff"/></svg>
+        <span class="loc-text"><b id="loc-name"></b><small id="loc-sub"></small></span>
+        <svg class="chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <!-- Flies back to the home location (and shows its forecast). -->
+      <button id="home-btn" class="round glass" type="button" data-i18n-attr="aria-label:top.goHome;title:top.goHome" aria-label="Go to home location" title="Go to home location">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" fill="#ff5d6c" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="10" r="2.6" fill="#fff"/></svg>
+      </button>
+    </div>
     <div class="top-actions">
       <span id="clock" class="clock" aria-live="off"></span>
       <div class="lang-wrap">

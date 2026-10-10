@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Forecast Channel</title>
-  <meta name="description" content="A modern fan remake of the Wii Forecast Channel: a spinning NASA globe, local and world forecasts from NOAA, UV index, laundry check and pollen counts.">
+  <title>Global Forecast</title>
+  <meta name="description" content="A modern remake of the Wii Forecast Channel: a spinning NASA globe, local and world forecasts from NOAA, UV index, laundry check and pollen counts.">
   <meta name="theme-color" content="#0b1a33">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,6 +16,8 @@
   </script>
   <script type="module" src="js/app.js"></script>
 </head>
+<!-- All visible text comes from strings/*.json via data-i18n keys (see js/i18n.js);
+     the English here is only what shows before the strings load. -->
 <body data-view="now">
   <div id="globe" class="globe" aria-hidden="true"></div>
   <div id="labels" class="labels"></div>
@@ -28,89 +30,100 @@
         <path d="M9 16c4-3 7 1 10-1s4-5 8-3 4 5 4 5M8 25c5 0 6-3 10-2s5 4 9 3" fill="none" stroke="#7fe0a0" stroke-width="2.6" stroke-linecap="round"/>
         <ellipse cx="14" cy="11" rx="5" ry="2.6" fill="#fff" opacity=".7" transform="rotate(-25 14 11)"/>
       </svg>
-      <span>Forecast</span>
+      <span data-i18n="brand">Global Forecast</span>
     </div>
-    <button id="loc-btn" class="loc-chip glass" type="button" aria-label="Change location">
+    <button id="loc-btn" class="loc-chip glass" type="button" data-i18n-attr="aria-label:top.changeLocation" aria-label="Change location">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" fill="#ff5d6c" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="10" r="2.6" fill="#fff"/></svg>
       <span class="loc-text"><b id="loc-name"></b><small id="loc-sub"></small></span>
       <svg class="chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
     </button>
     <div class="top-actions">
       <span id="clock" class="clock" aria-live="off"></span>
+      <div class="lang-wrap">
+        <button id="lang-btn" class="lang glass" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="lang-menu">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <span id="lang-label" class="lang-label"></span>
+          <span id="lang-short" class="lang-short" aria-hidden="true"></span>
+          <svg class="chev" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+        <ul id="lang-menu" class="lang-menu glass" role="menu" hidden></ul>
+      </div>
       <button id="units" class="round glass" type="button">°F</button>
-      <button id="music" class="round glass" type="button" aria-label="Music" title="Music">
+      <button id="music" class="round glass" type="button" data-i18n-attr="aria-label:top.music;title:top.music" aria-label="Music" title="Music">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/><path class="mute" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
       </button>
-      <button id="info" class="round glass" type="button" aria-label="About and data sources" title="About">
+      <button id="info" class="round glass" type="button" data-i18n-attr="aria-label:top.about;title:top.about" aria-label="About and data sources" title="About">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.4" fill="currentColor"/></svg>
       </button>
     </div>
   </header>
 
   <div id="away" class="away glass" hidden>
-    <span>Viewing away from <b id="away-name"></b></span>
-    <button id="away-back" class="pill small ghost" type="button">Back home</button>
-    <button id="away-home" class="pill small" type="button">Make this home</button>
+    <span id="away-text"></span>
+    <button id="away-back" class="pill small ghost" type="button" data-i18n="away.back">Back home</button>
+    <button id="away-home" class="pill small" type="button" data-i18n="away.makeHome">Make this home</button>
   </div>
 
   <main class="stage">
-    <button id="prev" class="page-arrow left" type="button" aria-label="Previous screen">
+    <button id="prev" class="page-arrow left" type="button" data-i18n-attr="aria-label:nav.prev" aria-label="Previous screen">
       <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <section id="panel" class="panel glass" aria-live="polite">
       <header class="panel-head">
-        <h1 id="panel-title">Current Conditions</h1>
+        <h1 id="panel-title"></h1>
         <span id="panel-date"></span>
+        <!-- Globe & Region only: hide the interface to explore the Earth. -->
+        <button id="explore" class="explore-btn" type="button" data-i18n-attr="title:explore.hideLabel">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span data-i18n="explore.hide">Explore</span>
+        </button>
       </header>
       <div id="panel-body" class="panel-body"></div>
     </section>
-    <button id="next" class="page-arrow right" type="button" aria-label="Next screen">
+    <button id="next" class="page-arrow right" type="button" data-i18n-attr="aria-label:nav.next" aria-label="Next screen">
       <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </main>
 
-  <nav id="dock" class="dock glass" aria-label="Forecast screens"></nav>
-  <div class="ticker" aria-label="World weather"><div id="ticker" class="ticker-track"></div></div>
+  <nav id="dock" class="dock glass" data-i18n-attr="aria-label:nav.screens" aria-label="Forecast screens"></nav>
+  <div class="ticker" data-i18n-attr="aria-label:ticker.label" aria-label="World weather"><div id="ticker" class="ticker-track"></div></div>
 
   <div id="intro" class="intro">
     <div class="intro-card">
       <div class="intro-logo">
-        <span class="intro-sub">The weather, around the world</span>
-        <h2>Forecast <em>Channel</em></h2>
+        <span class="intro-sub" data-i18n="intro.sub">The weather, around the world</span>
+        <h2 data-i18n="intro.title" data-i18n-html>Global <em>Forecast</em></h2>
       </div>
-      <button id="start" class="pill start" type="button">Start</button>
-      <p class="intro-fine">Forecasts from NOAA &amp; the National Weather Service · Earth imagery from NASA</p>
+      <button id="start" class="pill start" type="button" data-i18n="intro.start">Start</button>
+      <p class="intro-fine" data-i18n="intro.fine">Forecasts from NOAA &amp; the National Weather Service · Earth imagery from NASA</p>
     </div>
   </div>
 
   <dialog id="loc-dialog" class="sheet">
-    <form method="dialog" class="sheet-head"><h2>Choose a location</h2><button class="round" value="close" aria-label="Close">✕</button></form>
-    <input id="loc-q" type="search" placeholder="Search city, town or postal code" autocomplete="off" aria-label="Search places">
+    <form method="dialog" class="sheet-head"><h2 data-i18n="search.title">Choose a location</h2><button class="round" value="close" data-i18n-attr="aria-label:search.close" aria-label="Close">✕</button></form>
+    <input id="loc-q" type="search" autocomplete="off" data-i18n-attr="placeholder:search.placeholder;aria-label:search.placeholder" placeholder="Search city, town or postal code" aria-label="Search city, town or postal code">
     <button id="loc-geo" class="pill ghost geo" type="button">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3.5" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3" stroke="currentColor" stroke-width="2"/></svg>
-      Use my current location
+      <span data-i18n="search.geo">Use my current location</span>
     </button>
-    <label class="check"><input id="loc-home" type="checkbox" checked> Save as my home location</label>
+    <label class="check"><input id="loc-home" type="checkbox" checked> <span data-i18n="search.saveHome">Save as my home location</span></label>
     <ul id="loc-results" class="results"></ul>
   </dialog>
 
   <dialog id="info-dialog" class="sheet wide">
-    <form method="dialog" class="sheet-head"><h2>About this channel</h2><button class="round" value="close" aria-label="Close">✕</button></form>
-    <p>A modern, unofficial remake of the Wii Forecast Channel (2006–2013). It isn't affiliated with or endorsed by Nintendo. Everything here uses free, public data, mostly from U.S. government science agencies.</p>
-    <h3>Where the data comes from</h3>
-    <ul class="sources">
-      <li><b>Forecast numbers:</b> <a href="https://www.ncei.noaa.gov/products/weather-climate-models/global-forecast" target="_blank" rel="noopener">NOAA Global Forecast System (GFS)</a> and HRRR models, run by the U.S. National Weather Service. They're served as JSON by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>, which passes on the raw model output with no editing. Every location on Earth uses this same model.</li>
-      <li><b>Official U.S. forecasts &amp; alerts:</b> <a href="https://www.weather.gov/documentation/services-web-api" target="_blank" rel="noopener">National Weather Service API</a> (api.weather.gov).</li>
-      <li><b>Globe imagery:</b> NASA <a href="https://earthobservatory.nasa.gov/features/BlueMarble" target="_blank" rel="noopener">Blue Marble: Next Generation</a>, VIIRS <a href="https://earthobservatory.nasa.gov/features/NightLights" target="_blank" rel="noopener">Black Marble</a> night lights and <a href="https://gpm.nasa.gov/data/imerg" target="_blank" rel="noopener">GPM IMERG</a> precipitation, streamed from <a href="https://nasa-gibs.github.io/gibs-api-docs/" target="_blank" rel="noopener">NASA GIBS</a>. The original channel used Blue Marble too.</li>
-      <li><b>Pollen:</b> <a href="https://atmosphere.copernicus.eu/" target="_blank" rel="noopener">Copernicus Atmosphere Monitoring Service</a> (European Union). It covers Europe only.</li>
-      <li><b>UV scale:</b> World Health Organization / <a href="https://www.epa.gov/sunsafety/uv-index-scale-0" target="_blank" rel="noopener">U.S. EPA</a> UV Index categories.</li>
-      <li><b>Place search:</b> <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> gazetteer (CC BY 4.0).</li>
-      <li><b>Sun &amp; stars:</b> computed in your browser from the current time.</li>
-    </ul>
-    <h3>Notes</h3>
-    <p>The laundry check is calculated on this page from forecast humidity, wind, sunshine and rain chance. The music is an original loop synthesized live in your browser.</p>
-    <p class="fine">Tip: use the ← and → keys to flip between screens, just like the arrows on the original.</p>
+    <form method="dialog" class="sheet-head"><h2 data-i18n="about.title">About Global Forecast</h2><button class="round" value="close" data-i18n-attr="aria-label:search.close" aria-label="Close">✕</button></form>
+    <p data-i18n="about.intro"></p>
+    <h3 data-i18n="about.sourcesTitle"></h3>
+    <ul class="sources" data-i18n="about.sources" data-i18n-html></ul>
+    <h3 data-i18n="about.notesTitle"></h3>
+    <p data-i18n="about.notes"></p>
+    <p class="fine" data-i18n="about.tip"></p>
   </dialog>
+
+  <button id="explore-exit" class="explore-exit glass" type="button" hidden>
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span data-i18n="explore.show">Show controls</span>
+  </button>
 
   <div id="toast" class="toast" role="status"></div>
 </body>

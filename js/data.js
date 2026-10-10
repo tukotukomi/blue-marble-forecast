@@ -60,8 +60,8 @@ export async function fetchPollen(lat, lon) {
   return getJSON(`https://air-quality-api.open-meteo.com/v1/air-quality?${p}`);
 }
 
-export async function searchPlaces(q) {
-  const p = new URLSearchParams({ name: q, count: 8, language: 'en', format: 'json' });
+export async function searchPlaces(q, language = 'en') {
+  const p = new URLSearchParams({ name: q, count: 8, language, format: 'json' });
   const data = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?${p}`, { ttlMin: 600 });
   return (data.results || []).map(r => ({
     name: r.name, region: r.admin1 || '', country: r.country || '', cc: r.country_code || '',

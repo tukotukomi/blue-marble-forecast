@@ -4,40 +4,45 @@
 
 let uid = 0;
 
-// WMO weather interpretation codes (used by NOAA GFS output) -> icon + label.
+// WMO weather interpretation codes (used by NOAA GFS output) -> icon kind.
+// Human-readable labels live in strings/*.json as wx.<code>.
 const WMO = {
-  0: ['clear', 'Clear'],
-  1: ['mostly-clear', 'Mostly Clear'],
-  2: ['partly', 'Partly Cloudy'],
-  3: ['cloud', 'Cloudy'],
-  45: ['fog', 'Fog'],
-  48: ['fog', 'Freezing Fog'],
-  51: ['drizzle', 'Light Drizzle'],
-  53: ['drizzle', 'Drizzle'],
-  55: ['drizzle', 'Heavy Drizzle'],
-  56: ['sleet', 'Freezing Drizzle'],
-  57: ['sleet', 'Freezing Drizzle'],
-  61: ['rain', 'Light Rain'],
-  63: ['rain', 'Rain'],
-  65: ['heavy-rain', 'Heavy Rain'],
-  66: ['sleet', 'Freezing Rain'],
-  67: ['sleet', 'Freezing Rain'],
-  71: ['snow', 'Light Snow'],
-  73: ['snow', 'Snow'],
-  75: ['snow', 'Heavy Snow'],
-  77: ['snow', 'Snow Grains'],
-  80: ['showers', 'Showers'],
-  81: ['rain', 'Rain Showers'],
-  82: ['heavy-rain', 'Heavy Showers'],
-  85: ['snow', 'Snow Showers'],
-  86: ['snow', 'Heavy Snow Showers'],
-  95: ['thunder', 'Thunderstorms'],
-  96: ['thunder', 'Storms with Hail'],
-  99: ['thunder', 'Severe Storms'],
+  0: 'clear',
+  1: 'mostly-clear',
+  2: 'partly',
+  3: 'cloud',
+  45: 'fog',
+  48: 'fog',
+  51: 'drizzle',
+  53: 'drizzle',
+  55: 'drizzle',
+  56: 'sleet',
+  57: 'sleet',
+  61: 'rain',
+  63: 'rain',
+  65: 'heavy-rain',
+  66: 'sleet',
+  67: 'sleet',
+  71: 'snow',
+  73: 'snow',
+  75: 'snow',
+  77: 'snow',
+  80: 'showers',
+  81: 'rain',
+  82: 'heavy-rain',
+  85: 'snow',
+  86: 'snow',
+  95: 'thunder',
+  96: 'thunder',
+  99: 'thunder',
 };
 
+let translate = key => key;
+export function setTranslator(fn) { translate = fn; }
+
 export function describe(code, isDay = true) {
-  const [kind, label] = WMO[code] ?? ['cloud', 'Unknown'];
+  const kind = WMO[code] ?? 'cloud';
+  const label = translate(code in WMO ? `wx.${code}` : 'wx.unknown');
   let key = kind;
   if (kind === 'clear') key = isDay ? 'sun' : 'moon';
   if (kind === 'mostly-clear') key = isDay ? 'sun-cloud' : 'moon-cloud';
@@ -173,7 +178,8 @@ export function iconSVG(key, { size = 64, label = '' } = {}) {
   const id = `w${++uid}`;
   const body = (DRAW[key] ?? DRAW.cloud)(id);
   const a11y = label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"';
-  return `<svg class="wx-icon" viewBox="0 0 100 100" width="${size}" height="${size}" ${a11y}>${defs(id)}${body}</svg>`;
+  const cls = size >= 70 ? 'wx-icon wx-anim' : 'wx-icon'; // small icons stay still (see styles.css)
+  return `<svg class="${cls}" viewBox="0 0 100 100" width="${size}" height="${size}" ${a11y}>${defs(id)}${body}</svg>`;
 }
 
 export function iconFor(code, isDay, opts = {}) {

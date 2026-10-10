@@ -109,6 +109,10 @@ function blankTex(rgba) {
 }
 
 export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
+  // Set whenever the scene needs a redraw; see the main loop below.
+  let dirty = true;
+  const invalidate = () => { dirty = true; };
+
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -116,7 +120,6 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
     host.classList.add('no-webgl');
     return null;
   }
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   host.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -141,6 +144,7 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = aniso;
         uniforms[uniform].value = tex;
+        invalidate();
         resolve(true);
       }, undefined, () => resolve(false));
     });
@@ -195,6 +199,7 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
     const a = astro();
     uniforms.sunDir.value.copy(toVec(a.sunLat, a.sunLon));
     placeSky(a.gmst);
+    invalidate();
     return a;
   }
   updateSun();
@@ -208,6 +213,17 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
   let lastInteract = 0;
   let offset = { x: 0, y: 0 }, offsetTarget = { x: 0, y: 0 };
   const LIMITS = { min: 1.12, max: 6 };
+
+  // On portrait phones the narrow horizontal field of view is what clips the
+  // Earth, so the overview distances are pushed back until it fits the width.
+  function portraitFit() {
+    const aspect = host.clientWidth / Math.max(1, host.clientHeight);
+    if (aspect >= 1) return 0;
+    const halfH = Math.atan(Math.tan(camera.fov * D2R / 2) * aspect);
+    const fit = 1.06 / Math.sin(halfH);
+    LIMITS.max = Math.max(6, fit * 1.25);
+    return fit;
+  }
 
   function flyTo(lat, lon, dist, ms = 1600) {
     let dLon = ((lon - cam.lon + 540) % 360) - 180;
@@ -295,14 +311,25 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
       m.innerHTML = renderLabel(item, mode);
       m.addEventListener('click', () => item.onClick?.(item));
       labelLayer.appendChild(m);
-      return { item, el: m, vec: toVec(item.lat, item.lon, 1.003), w: 0, h: 0, dirty: true };
+      return { item, el: m, vec: toVec(item.lat, item.lon, 1.003), w: 0, h: 0, dirty: true, shown: false, tf: '', op: '' };
     });
+    invalidate();
   }
   function refreshLabels() {
     for (const m of markers) { m.el.innerHTML = renderLabel(m.item, mode); m.dirty = true; }
+    invalidate();
   }
 
+  // Labels are only touched when their position, fade or visibility actually
+  // changes: writing ~140 inline styles every frame was the main cost on the
+  // main thread (and made Firefox's compositor animations stutter).
   const tmp = new THREE.Vector3(), camDir = new THREE.Vector3();
+  const snap = v => Math.round(v * devicePixelRatio) / devicePixelRatio;
+  function show(m, on) {
+    if (m.shown === on) return;
+    m.shown = on;
+    m.el.style.visibility = on ? 'visible' : 'hidden';
+  }
   function layoutLabels(w, h) {
     camDir.copy(camera.position).normalize();
     const placed = [];
@@ -317,35 +344,55 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
       if (visible) {
         tmp.copy(m.vec).project(camera);
         const x = (tmp.x * 0.5 + 0.5) * w, y = (-tmp.y * 0.5 + 0.5) * h;
-        if (m.dirty) { m.w = m.el.offsetWidth || 80; m.h = m.el.offsetHeight || 40; m.dirty = false; }
+        if (m.dirty) {
+          m.w = m.el.offsetWidth || 80; m.h = m.el.offsetHeight || 40; m.dirty = false;
+          m.el.style.zIndex = it.home ? 5 : 1;
+        }
         const box = { l: x - m.w / 2, r: x + m.w / 2, t: y - m.h, b: y };
         const clash = !it.home && placed.some(p => box.l < p.r + 4 && box.r > p.l - 4 && box.t < p.b + 4 && box.b > p.t - 4);
         const off = x < -60 || x > w + 60 || (!it.home && (y - m.h < safe.top || y > h - safe.bottom));
         if (!clash && !off) {
           placed.push(box);
-          m.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
-          m.el.style.opacity = Math.min(1, facing * 6).toFixed(2);
-          m.el.style.visibility = 'visible';
-          m.el.style.zIndex = it.home ? 5 : 1;
+          const tf = `translate(${snap(box.l)}px, ${snap(box.t)}px)`;
+          if (tf !== m.tf) { m.tf = tf; m.el.style.transform = tf; }
+          const op = (Math.round(Math.min(1, facing * 6) * 20) / 20).toString();
+          if (op !== m.op) { m.op = op; m.el.style.opacity = op; }
+          show(m, true);
           continue;
         }
       }
-      m.el.style.visibility = 'hidden';
+      show(m, false);
     }
   }
 
   // --- Main loop ---
+  // The globe only re-renders when something on screen changes (camera move,
+  // fly-to, auto-spin, new texture, resize...). On the forecast screens the
+  // camera sits still, so most frames cost nothing at all.
+  let lastKey = '';
+
+  // Drop the render resolution on slow GPUs: if frames keep taking longer
+  // than ~22 ms, step the pixel ratio down (never below 1).
+  let pixelRatio = Math.min(devicePixelRatio, 2);
+  let slowFrames = 0;
+  renderer.setPixelRatio(pixelRatio);
+
   function resize() {
     const w = host.clientWidth, h = host.clientHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    invalidate();
   }
   new ResizeObserver(resize).observe(host);
   resize();
 
+  let lastNow = performance.now();
   function frame(now) {
     requestAnimationFrame(frame);
+    // Motion is time-based so speed is the same at 60, 120 or a choppy 40 fps.
+    const f = Math.min(now - lastNow, 100) / (1000 / 60);
+    lastNow = now;
     if (anim) {
       const t = Math.min(1, (now - anim.t0) / anim.ms), e = ease(t);
       // Pull out a little mid-flight so long hops arc over the globe.
@@ -355,15 +402,26 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
       cam.dist = anim.from.dist + (anim.to.dist - anim.from.dist) * e + hop;
       if (t >= 1) anim = null;
     } else if (!pointers.size) {
-      cam.lon += vel.lon; cam.lat = THREE.MathUtils.clamp(cam.lat + vel.lat, -85, 85);
-      vel.lon *= 0.93; vel.lat *= 0.93;
+      if (Math.abs(vel.lon) + Math.abs(vel.lat) > 1e-4) {
+        cam.lon += vel.lon * f; cam.lat = THREE.MathUtils.clamp(cam.lat + vel.lat * f, -85, 85);
+        const decay = 0.93 ** f;
+        vel.lon *= decay; vel.lat *= decay;
+      }
       const idle = now - lastInteract > 5000;
-      if (mode === 'intro' || (mode === 'globe' && idle)) cam.lon -= 0.035;
+      if (mode === 'intro' || (mode === 'globe' && idle)) cam.lon -= 0.035 * f;
     }
-    offset.x += (offsetTarget.x - offset.x) * 0.08;
-    offset.y += (offsetTarget.y - offset.y) * 0.08;
+    const ease8 = 1 - 0.92 ** f;
+    offset.x += (offsetTarget.x - offset.x) * ease8;
+    offset.y += (offsetTarget.y - offset.y) * ease8;
+    if (Math.abs(offsetTarget.x - offset.x) < 0.2) offset.x = offsetTarget.x;
+    if (Math.abs(offsetTarget.y - offset.y) < 0.2) offset.y = offsetTarget.y;
 
     const w = host.clientWidth, h = host.clientHeight;
+    const key = `${cam.lat.toFixed(4)},${cam.lon.toFixed(4)},${cam.dist.toFixed(4)},${offset.x.toFixed(1)},${offset.y.toFixed(1)},${w},${h}`;
+    if (!dirty && key === lastKey) return;
+    dirty = false;
+    lastKey = key;
+
     camera.position.copy(toVec(cam.lat, cam.lon, cam.dist));
     camera.lookAt(0, 0, 0);
     if (Math.abs(offset.x) > 0.5 || Math.abs(offset.y) > 0.5) camera.setViewOffset(w, h, -offset.x, offset.y, w, h);
@@ -371,6 +429,23 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
     constMat.opacity = THREE.MathUtils.clamp((cam.dist - 3) / 2, 0, 0.55);
     renderer.render(scene, camera);
     layoutLabels(w, h);
+    adapt(now);
+  }
+
+  // CPU time of render() is a poor proxy for GPU load, so judge by the gap
+  // between consecutive animated frames instead.
+  let prevRender = 0;
+  function adapt(now) {
+    const gap = now - prevRender;
+    prevRender = now;
+    if (gap > 100) return; // first frame after an idle spell
+    slowFrames = gap > 22 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
+    if (slowFrames > 45 && pixelRatio > 1) {
+      pixelRatio = Math.max(1, pixelRatio - 0.25);
+      renderer.setPixelRatio(pixelRatio);
+      resize();
+      slowFrames = 0;
+    }
   }
   requestAnimationFrame(frame);
 
@@ -386,13 +461,15 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
       const wide = host.clientWidth > 860;
       // Push the focus point out from under the forecast panel.
       offsetTarget = m === 'park' ? (wide ? { x: host.clientWidth * 0.2, y: 0 } : { x: 0, y: host.clientHeight * 0.22 }) : { x: 0, y: 0 };
-      const dist = { intro: 3.4, park: wide ? 2.05 : 2.6, region: 1.32, globe: 2.9 }[m];
+      const fit = portraitFit();
+      const dist = { intro: Math.max(3.4, fit), park: wide ? 2.05 : 2.6, region: 1.32, globe: Math.max(2.9, fit) }[m];
       if (lat != null) flyTo(m === 'park' ? lat - 4 : lat, lon, dist, ms);
       else if (m === 'globe') flyTo(cam.lat, cam.lon, dist, ms ?? 1200);
       lastInteract = performance.now();
       refreshLabels();
     },
     setLayer(name, on) {
+      invalidate();
       if (name === 'night') uniforms.uNight.value = on ? 1 : 0;
       if (name === 'precip') {
         uniforms.uPrecip.value = on ? 1 : 0;

@@ -11,7 +11,7 @@
 // sun position and sidereal time, so the globe matches the actual sky "now".
 
 import * as THREE from 'three';
-import { FrameLayer } from './frames.js';
+import { FrameLayer, FrameSync } from './frames.js';
 import { RADAR_BOX } from './data.js';
 
 const GIBS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326&BBOX=-90,-180,90,180&STYLES=';
@@ -251,13 +251,32 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   const ready = Promise.all([load('day', 'dayTex'), load('night', 'nightTex')]);
 
   // Animated precipitation layers (frames.js). The app supplies the frame lists.
+  // Animation frames waiting to go to the GPU, sent at most one per drawn
+  // frame so several layers never upload together (each is a large image).
+  // upload() resolves once that texture is on the GPU.
+  const uploads = new Map();
+  const upload = tex => new Promise(resolve => {
+    uploads.get(tex)?.();
+    uploads.set(tex, resolve);
+    invalidate();
+  });
+  function uploadOne() {
+    const [tex, resolve] = uploads.entries().next().value ?? [];
+    if (!tex) return;
+    uploads.delete(tex);
+    if (!tex.userData.disposed) renderer.initTexture(tex);
+    resolve();
+  }
   const anims = {
-    sat: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('sat', i, n, time) }),
-    radar: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar', i, n, time) }),
-    radar2: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar2', i, n, time) }),
-    radar3: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar3', i, n, time) }),
-    fcst: new FrameLayer({ forward: true, onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('fcst', i, n, time) }),
+    sat: new FrameLayer({ onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('sat', i, n, time) }),
+    radar: new FrameLayer({ onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('radar', i, n, time) }),
+    radar2: new FrameLayer({ onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('radar2', i, n, time) }),
+    radar3: new FrameLayer({ onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('radar3', i, n, time) }),
+    fcst: new FrameLayer({ forward: true, onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('fcst', i, n, time) }),
   };
+  // Observations share one clock (see FrameSync); the forecast keeps its own.
+  const sync = new FrameSync({ sat: anims.sat, radar: anims.radar, radar2: anims.radar2, radar3: anims.radar3 },
+    name => !!uniforms[ANIM_UNIFORMS[name][0]].value);
   const ANIM_UNIFORMS = {
     sat: ['uSat', 'satA', 'satB', 'satMix'],
     radar: ['uRad', 'radA', 'radB', 'radMix'],
@@ -350,6 +369,32 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     const fit = 1.06 / Math.sin(halfH);
     LIMITS.max = Math.max(6, fit * 1.25);
     return fit;
+  }
+
+  // Camera distance that shows about `km` of ground across the screen width
+  // (flat-ground approximation, fine at city-to-region scales).
+  function distForWidth(km) {
+    const halfW = Math.atan(Math.tan(camera.fov * D2R / 2) * (host.clientWidth / Math.max(1, host.clientHeight)));
+    return THREE.MathUtils.clamp(1 + (km / 6371) / (2 * Math.tan(halfW)), LIMITS.min, LIMITS.max);
+  }
+
+  // Country and state lines (borders.js), loaded the first time they're shown.
+  const borders = { on: false, lines: null, loading: null };
+  function showBorders(on) {
+    borders.on = on;
+    if (borders.lines) borders.lines.group.visible = on;
+    else if (on && !borders.loading) {
+      borders.loading = import('./borders.js')
+        .then(m => m.createBorders(new URL('../data/borders.json', import.meta.url)))
+        .then(lines => {
+          borders.lines = lines;
+          lines.group.visible = borders.on;
+          scene.add(lines.group);
+          invalidate();
+        })
+        .catch(() => { borders.loading = null; });
+    }
+    invalidate();
   }
 
   function flyTo(lat, lon, dist, ms = 1600) {
@@ -660,6 +705,8 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     for (const [k, layer] of Object.entries(anims)) {
       if (uniforms[ANIM_UNIFORMS[k][0]].value && layer.tick(dt)) dirty = true;
     }
+    if (sync.tick(dt)) dirty = true;
+    uploadOne();
     bindAnims();
     if (anim) {
       const t = Math.min(1, (now - anim.t0) / anim.ms), e = ease(t);
@@ -700,6 +747,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     // Rain-edge roughness only up close, where it's finer than the data; far
     // out it would be smaller than a pixel and just shimmer.
     uniforms.uGrain.value = THREE.MathUtils.clamp((1.6 - cam.dist) / 0.4, 0, 1);
+    borders.lines?.update(w, h, cam.dist);
     renderer.render(scene, camera);
     layoutLabels(w, h);
     adapt(now);
@@ -728,15 +776,18 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     setMarkers,
     refreshLabels,
     get mode() { return mode; },
-    setMode(m, { lat, lon, ms } = {}) {
+    // widthKm (park only): fly in close enough to show about that much ground
+    // across the screen, centred on the place instead of nudged north of it.
+    setMode(m, { lat, lon, ms, widthKm } = {}) {
       mode = m;
       host.dataset.mode = m;
       const wide = host.clientWidth > 860;
       // Push the focus point out from under the forecast panel.
       offsetTarget = m === 'park' ? (wide ? { x: host.clientWidth * 0.2, y: 0 } : { x: 0, y: host.clientHeight * 0.22 }) : { x: 0, y: 0 };
       const fit = portraitFit();
-      const dist = { intro: Math.max(3.4, fit), park: wide ? 2.05 : 2.6, region: 1.32, globe: Math.max(2.9, fit) }[m];
-      if (lat != null) flyTo(m === 'park' ? lat - 4 : lat, lon, dist, ms);
+      const close = m === 'park' && widthKm;
+      const dist = close ? distForWidth(widthKm) : { intro: Math.max(3.4, fit), park: wide ? 2.05 : 2.6, region: 1.32, globe: Math.max(2.9, fit) }[m];
+      if (lat != null) flyTo(m === 'park' && !close ? lat - 4 : lat, lon, dist, ms);
       else if (m === 'globe') flyTo(cam.lat, cam.lon, dist, ms ?? 1200);
       lastInteract = performance.now();
       refreshLabels();
@@ -744,7 +795,9 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     setLayer(name, on) {
       invalidate();
       if (name === 'night') uniforms.uNight.value = on ? 1 : 0;
+      if (name === 'borders') showBorders(on);
       if (name in ANIM_UNIFORMS) uniforms[ANIM_UNIFORMS[name][0]].value = on ? 1 : 0;
+      if (name in ANIM_UNIFORMS && name !== 'fcst') sync.refresh();
     },
     // frames: [{ time: Date, url } | { time: Date, image }], oldest first.
     // box: { w, s, e, n } for layers that cover only part of the globe.
@@ -753,8 +806,12 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       // The box is applied when the first new frame is on screen (see bindAnims).
       return anims[name].setFrames(frames, { keepIndex, box });
     },
-    setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; },
-    seek(name, i) { return anims[name].seek(i); },
+    setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; sync.playing = on; },
+    seek(name, i) {
+      const layer = anims[name];
+      if (!layer.sync || !layer.frames[i]) return layer.seek(i);
+      sync.seekTime(+layer.frames[i].time);
+    },
     sunInfo: () => astro(),
     // Controller input (gamepad.js): spin by screen pixels like a drag, zoom
     // by a factor, and "tap" a screen point.

@@ -21,7 +21,7 @@ All free and public, mostly from government science agencies:
 | High resolution radar | Environment and Climate Change Canada (North America), DWD (Germany), EUMETNET OPERA (Europe) |
 | 12-hour forecast rain | NOAA HRRR via the Iowa Environmental Mesonet (U.S.), DWD ICON-EU (Europe), NOAA GFS (elsewhere) |
 | Pollen | Copernicus Atmosphere Monitoring Service (Europe) |
-| Cities | Natural Earth populated places |
+| Cities and borders | Natural Earth populated places, country and state/province lines |
 
 The in-app About panel (Settings) has the full credits.
 
@@ -33,6 +33,7 @@ js/                       app.js (screens), globe.js (three.js Earth), frames.js
                           data.js + forecast-rain.js + opera.js (data), i18n.js, audio.js, ...
 strings/                  en.json, es.json, zh-cn.json (every UI string)
 data/places.json          map cities, built by tools/build-places.mjs from Natural Earth
+data/borders.json         country and state lines, built by tools/build-borders.mjs from Natural Earth
 tools/opera-relay/        the Cloudflare Worker that relays OPERA radar files (see below)
 sw.js, manifest.webmanifest, icons/   home-screen app
 ```

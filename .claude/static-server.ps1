@@ -80,6 +80,9 @@ while ($listener.IsListening) {
         $bytes = [System.IO.File]::ReadAllBytes($filePath)
         $ext = [System.IO.Path]::GetExtension($filePath)
         $res.ContentType = if ($mimeMap.ContainsKey($ext)) { $mimeMap[$ext] } else { "application/octet-stream" }
+        # Always fetch fresh while developing, so an edit is never hidden by a
+        # cached copy of an older module.
+        $res.AddHeader("Cache-Control", "no-store")
         $res.ContentLength64 = $bytes.Length
         $res.OutputStream.Write($bytes, 0, $bytes.Length)
     } catch {

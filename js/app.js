@@ -53,7 +53,7 @@ const state = {
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, sat: true, radar: true, fcst: false, ...savedLayers() },
+  layers: { night: true, sat: true, radar: true, borders: true, fcst: false, ...savedLayers() },
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',
@@ -379,6 +379,11 @@ function renderDock() {
 }
 
 // ---------- view switching ----------
+// On phones, Now opens close in (about 500 km across the screen) so the
+// place and its weather fill the small view; the other screens keep the
+// wider look. Read at call time: `phone` is defined further down.
+const closeNow = () => state.view === 'now' && phone.matches;
+const parkView = () => (closeNow() ? { widthKm: 500 } : {});
 function go(id, { sound = true } = {}) {
   if (sound) blip('select');
   closePick();
@@ -391,7 +396,7 @@ function go(id, { sound = true } = {}) {
   if (globe) {
     if (id === 'globe') globe.setMode('globe');
     else if (id === 'region') globe.setMode('region', { lat: v.lat, lon: v.lon });
-    else if (globe.mode !== 'park') globe.setMode('park', { lat: v.lat, lon: v.lon });
+    else if (globe.mode !== 'park' || closeNow()) globe.setMode('park', { lat: v.lat, lon: v.lon, ...parkView() });
     else globe.refreshLabels();
   }
   render(true);
@@ -829,7 +834,7 @@ function layersHTML() {
     </div>`;
   }).join('');
   return `<div id="layers">
-    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('fcst', t('globe.fcst'))}</div>
+    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('borders', t('globe.borders'))}${sw('fcst', t('globe.fcst'))}</div>
     ${rows ? `<div class="anim"><button type="button" class="anim-play" id="anim-play"></button><div class="anim-rows">${rows}</div></div>
       <p class="fine anim-note">${esc(t('anim.note'))}</p>` : ''}
   </div>`;
@@ -929,7 +934,7 @@ function openLocation(loc, { asHome = false } = {}) {
   if (globe) {
     const m = state.view === 'globe' || state.view === 'region' ? 'region' : 'park';
     if (state.view === 'globe') go('now', { sound: false });
-    else globe.setMode(m, { lat: loc.lat, lon: loc.lon });
+    else globe.setMode(m, { lat: loc.lat, lon: loc.lon, ...(m === 'park' ? parkView() : {}) });
   }
 }
 

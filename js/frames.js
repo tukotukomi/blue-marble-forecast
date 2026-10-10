@@ -11,13 +11,35 @@ const FADE = 450;      // ms spent blending into the next frame
 const HOLD = 250;      // ms each frame rests before blending onward
 const HOLD_END = 1600; // pause on the newest frame before looping
 
+// Frames become ImageBitmaps where the browser can: createImageBitmap decodes
+// off the main thread and can flip and premultiply the pixels while it's at
+// it, so sending them to the GPU is a plain copy. An <img> or canvas makes the
+// browser do that conversion on the main thread during the upload, which took
+// 20-35 ms per large radar frame: a visible stutter in the animation.
+const BITMAP = { imageOrientation: 'flipY', premultiplyAlpha: 'premultiply', colorSpaceConversion: 'none' };
+const canBitmap = typeof createImageBitmap === 'function';
+const isBitmap = img => typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap;
+async function toBitmap(src, opts = BITMAP) {
+  if (!canBitmap) return null;
+  try { return await createImageBitmap(src, opts); } catch { return null; }
+}
+
+// Premultiplied alpha gives clean filtering at rain edges (the shader
+// un-premultiplies). Bitmaps arrive flipped and premultiplied already; WebGL
+// ignores these two flags for them anyway.
+function setImage(t, image) {
+  t.image = image;
+  t.flipY = t.premultiplyAlpha = !isBitmap(image);
+  t.userData.size = [image.width, image.height]; // a closed bitmap reports 0
+  t.needsUpdate = true;
+}
+
 function makeTexture(image) {
-  const t = new THREE.Texture(image);
+  const t = new THREE.Texture();
   t.colorSpace = THREE.SRGBColorSpace;
-  t.premultiplyAlpha = true; // clean filtering at rain edges (the shader un-premultiplies)
   t.generateMipmaps = false;
   t.minFilter = THREE.LinearFilter;
-  t.needsUpdate = true;
+  setImage(t, image);
   return t;
 }
 
@@ -28,15 +50,19 @@ function emptyTexture() {
 }
 
 // three.js allocates GPU storage at a texture's first size and can't resize
-// it in place, so an image of a different size needs a new texture.
+// it in place, so an image of a different size needs a new texture. The
+// bitmap being replaced is already on the GPU, so its memory is freed now.
 function withImage(tex, img) {
-  if (tex.image.width === img.width && tex.image.height === img.height) {
-    tex.image = img;
-    tex.needsUpdate = true;
-    return tex;
+  const old = tex.image;
+  const [w, h] = tex.userData.size;
+  if (w === img.width && h === img.height) setImage(tex, img);
+  else {
+    tex.userData.disposed = true;
+    tex.dispose();
+    tex = makeTexture(img);
   }
-  tex.dispose();
-  return makeTexture(img);
+  if (old !== img && isBitmap(old)) old.close();
+  return tex;
 }
 
 const urlsOf = f => (f.image ? [] : [].concat(f.url ?? []).filter(Boolean));
@@ -44,7 +70,10 @@ const urlsOf = f => (f.image ? [] : [].concat(f.url ?? []).filter(Boolean));
 export class FrameLayer {
   // forward: a forecast, which starts at "now" (its first frame) rather than
   // at the newest frame like the observed layers.
-  constructor({ onChange, onFrame, forward = false }) {
+  // upload(texture): queue it for the GPU; resolves once it's there (globe.js
+  // paces uploads to one per drawn frame).
+  constructor({ onChange, onFrame, upload = async () => {}, forward = false }) {
+    this.upload = upload;
     this.forward = forward;
     this.texA = emptyTexture();
     this.texB = emptyTexture();
@@ -87,6 +116,7 @@ export class FrameLayer {
     const start = keepIndex && this.idx >= 0 ? Math.min(this.idx, frames.length - 1) : this.forward ? 0 : frames.length - 1;
     await this.seek(start);
     this.prefetch();
+    this.sync?.refresh();
   }
 
   blob(url) {
@@ -107,10 +137,14 @@ export class FrameLayer {
     await Promise.all([worker(), worker()]);
   }
 
-  async load(url) {
+  // Decode one downloaded frame: as a texture-ready bitmap by default, or
+  // unflipped (opts = {}) for drawing into a canvas.
+  async load(url, opts = BITMAP) {
     const src = await this.blob(url);
     if (!src) return null;
-    const img = new Image();
+    const bmp = await toBitmap(await (await fetch(src)).blob(), opts);
+    if (bmp) return bmp;
+    const img = new Image(); // browsers without createImageBitmap
     img.src = src;
     try { await img.decode(); } catch { return null; }
     return img;
@@ -121,18 +155,19 @@ export class FrameLayer {
   // transform(canvas) recolours it (e.g. DWD's palette to ours).
   async decode(i) {
     const f = this.frames[i];
-    if (f.image) return f.image;
+    if (f.image) return (await toBitmap(f.image)) ?? f.image;
     const urls = urlsOf(f);
     if (urls.length === 1 && !f.transform) return this.load(urls[0]);
-    const imgs = await Promise.all(urls.map(u => this.load(u)));
+    const imgs = await Promise.all(urls.map(u => this.load(u, {})));
     const first = imgs.find(Boolean);
     if (!first) return null;
     const canvas = document.createElement('canvas');
-    canvas.width = first.naturalWidth; canvas.height = first.naturalHeight;
+    canvas.width = first.width; canvas.height = first.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: !!f.transform });
     for (const img of imgs) if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    for (const img of imgs) if (isBitmap(img)) img.close();
     f.transform?.(ctx, canvas.width, canvas.height);
-    return canvas;
+    return (await toBitmap(canvas)) ?? canvas;
   }
 
   async seek(i) {
@@ -140,6 +175,7 @@ export class FrameLayer {
     const img = await this.decode(i);
     if (token !== this.token || !img) return;
     this.texA = withImage(this.texA, img);
+    this.upload(this.texA);
     if (this.pendingBox) { this.box = this.pendingBox; this.pendingBox = null; }
     this.idx = i;
     this.mix = 0;
@@ -150,9 +186,7 @@ export class FrameLayer {
     this.onChange?.();
   }
 
-  async loadNext() {
-    const n = this.frames.length;
-    const next = (this.idx + 1) % n;
+  async loadNext(next = (this.idx + 1) % this.frames.length) {
     if (this.bIdx === next) return;
     this.bIdx = next;
     this.bReady = false;
@@ -161,25 +195,142 @@ export class FrameLayer {
     if (token !== this.token || this.bIdx !== next) return;
     if (!img) { this.bIdx = -1; return; } // missing frame: retried next tick
     this.texB = withImage(this.texB, img);
+    // Ready once it's on the GPU, so the crossfade never waits on an upload.
+    await this.upload(this.texB);
+    if (token !== this.token || this.bIdx !== next) return;
     this.bReady = true;
   }
 
+  // Newest frame at or before time t (ms); the first frame if t is earlier.
+  frameAt(t) {
+    let i = 0;
+    while (i + 1 < this.frames.length && +this.frames[i + 1].time <= t + 60e3) i++;
+    return i;
+  }
+
+  // Typical time between frames, in ms.
+  stepMs() {
+    const n = this.frames.length;
+    return n > 1 ? (this.frames[n - 1].time - this.frames[0].time) / (n - 1) : 30 * 60e3;
+  }
+
+  // Finish the crossfade: the frame in B becomes the one shown.
+  advance() {
+    [this.texA, this.texB] = [this.texB, this.texA];
+    this.idx = this.bIdx;
+    this.mix = 0;
+    this.bIdx = -1;
+    this.bReady = false;
+    this.onFrame?.(this.idx, this.frames.length, this.frames[this.idx].time);
+  }
+
   // Advance by dt ms. Returns true when the picture changed (needs a redraw).
+  // Layers in a FrameSync are driven by it instead.
   tick(dt) {
-    if (!this.playing || this.frames.length < 2 || this.idx < 0) return false;
+    if (this.sync || !this.playing || this.frames.length < 2 || this.idx < 0) return false;
     if (!this.bReady) this.loadNext(); // decode the next frame while this one rests
     if (this.wait > 0) { this.wait -= dt; return false; }
     if (!this.bReady) return false;
     this.mix = Math.min(1, this.mix + dt / FADE);
     if (this.mix >= 1) {
-      [this.texA, this.texB] = [this.texB, this.texA];
-      this.idx = this.bIdx;
-      this.mix = 0;
-      this.bIdx = -1;
-      this.bReady = false;
+      this.advance();
       this.wait = this.idx === this.frames.length - 1 ? HOLD_END : HOLD;
-      this.onFrame?.(this.idx, this.frames.length, this.frames[this.idx].time);
     }
     return true;
+  }
+}
+
+// Plays several observation layers (satellite rain and each radar) on one
+// clock, so every region shows the same moment. Each source has its own scan
+// interval and delay, and looping them separately let them drift apart: a
+// storm crossing from France into Germany could appear at two different
+// times on either side of the border.
+//
+// The clock steps through one window of real time: as long as the shortest
+// layer's loop (two hours of radar), ending at the newest scan, in steps of
+// the finest scan interval. At each step every layer shows its newest frame
+// at or before that moment, holding a frame when its scans are further apart
+// (or when, like the satellite, its data is older than the window).
+export class FrameSync {
+  // layers: { name: FrameLayer }; isOn(name): whether that layer is visible.
+  constructor(layers, isOn) {
+    this.layers = Object.entries(layers);
+    this.isOn = isOn;
+    this.steps = [];  // clock times (ms), oldest first
+    this.step = -1;   // index of the time on screen
+    this.wait = 0;
+    this.mix = 0;
+    this.stall = 0;
+    this.playing = true;
+    for (const [, l] of this.layers) l.sync = this;
+  }
+
+  members() {
+    return this.layers.filter(([name, l]) => l.frames.length && l.idx >= 0 && this.isOn(name)).map(([, l]) => l);
+  }
+
+  // Rebuild the timeline (layers loaded, switched or reloaded) and put every
+  // layer on the frame for the current time.
+  refresh() {
+    const m = this.members();
+    const was = this.steps[this.step];
+    if (!m.length) { this.steps = []; this.step = -1; return; }
+    const end = Math.max(...m.map(l => +l.frames.at(-1).time));
+    const span = Math.min(...m.map(l => l.frames.at(-1).time - l.frames[0].time));
+    const step = Math.max(60e3, Math.min(...m.map(l => l.stepMs())));
+    const n = Math.max(1, Math.round(span / step));
+    this.steps = Array.from({ length: n + 1 }, (_, k) => end - (n - k) * step);
+    this.step = was == null ? n : this.indexAt(was);
+    this.place(m);
+  }
+
+  indexAt(t) {
+    let i = 0;
+    while (i + 1 < this.steps.length && this.steps[i + 1] <= t) i++;
+    return i;
+  }
+
+  place(m = this.members()) {
+    const t = this.steps[this.step];
+    for (const l of m) l.mix = 0;
+    for (const l of m) if (l.frameAt(t) !== l.idx) l.seek(l.frameAt(t));
+    this.mix = 0;
+    this.stall = 0;
+    this.wait = this.step === this.steps.length - 1 ? HOLD_END : HOLD;
+  }
+
+  // A timeline slider moved: jump every layer to that frame's time.
+  seekTime(t) {
+    if (!this.steps.length) return;
+    this.step = this.indexAt(t);
+    this.place();
+  }
+
+  // Advance by dt ms. Returns true when the picture changed.
+  tick(dt) {
+    if (!this.playing || this.steps.length < 2) return false;
+    const m = this.members();
+    if (!m.length) return false;
+    const next = (this.step + 1) % this.steps.length;
+    const t = this.steps[next];
+    const moving = m.filter(l => l.frameAt(t) !== l.idx);
+    for (const l of moving) l.loadNext(l.frameAt(t)); // decode while this step rests
+    if (this.wait > 0) { this.wait -= dt; return false; }
+    const ready = l => l.bReady && l.bIdx === l.frameAt(t);
+    // Every layer moves together; a frame that won't load (a gap in a
+    // source's archive) is left behind after a few seconds, not waited on.
+    if (!moving.every(ready) && (this.stall += dt) < 3000) return false;
+    const go = moving.filter(ready);
+    this.mix = Math.min(1, this.mix + dt / FADE);
+    for (const l of go) l.mix = this.mix;
+    if (this.mix >= 1) {
+      for (const l of go) l.advance();
+      for (const l of moving) if (!ready(l)) l.mix = 0;
+      this.step = next;
+      this.mix = 0;
+      this.stall = 0;
+      this.wait = next === this.steps.length - 1 ? HOLD_END : HOLD;
+    }
+    return go.length > 0;
   }
 }

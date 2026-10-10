@@ -1,6 +1,6 @@
 {
-  "name": "Global Forecast",
-  "short_name": "Forecast",
+  "name": "Blue Marble Forecast",
+  "short_name": "Blue Marble",
   "description": "A modern remake of the Wii Forecast Channel: a spinning NASA globe, local and world forecasts from NOAA, live radar and rain animations.",
   "id": "./",
   "start_url": "./",

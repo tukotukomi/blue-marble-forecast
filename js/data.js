@@ -10,6 +10,7 @@
 //  - GeoNames         - place-name search (via Open-Meteo's geocoder).
 
 import { NWS_COUNTRIES } from './cities.js';
+import { recolourDwdRadar } from './recolour.js';
 
 const OM = 'https://api.open-meteo.com/v1/forecast';
 const CACHE_MIN = 20;
@@ -234,4 +235,28 @@ async function fetchEcccRadar(minutes = 120, stepMin = 12) {
 
 export async function fetchHiResRadar() {
   try { return await fetchEcccRadar(); } catch { return fetchRadarFrames(); }
+}
+
+// ---- High resolution radar: Germany ----
+
+// DWD's 1 km German radar composite (Germany and its borders), every 5
+// minutes. Its own small per-layer capabilities document gives the newest
+// scan; frames are recoloured to the app's palette (see recolour.js).
+const DWD_RADAR = 'https://maps.dwd.de/geoserver/dwd';
+export const DE_RADAR_BOX = { w: 1.46, s: 45.68, e: 18.73, n: 56.22 };
+
+export async function fetchGermanRadar(minutes = 120, stepMin = 10) {
+  const res = await fetch(`${DWD_RADAR}/Radar_wn-analysis_1x1km_ger/ows?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0`);
+  if (!res.ok) throw new Error(`DWD ${res.status}`);
+  const dim = (await res.text()).match(/<Dimension name="time"[^>]*>([^<]+)</)?.[1];
+  const end = Date.parse(dim?.split(',').pop().split('/')[1] ?? '');
+  if (Number.isNaN(end)) throw new Error('No DWD radar times');
+  const count = Math.floor(minutes / stepMin) + 1;
+  const frames = Array.from({ length: count }, (_, k) => {
+    const time = new Date(end - (count - 1 - k) * stepMin * 60e3);
+    const urlFor = ({ w, s, e, n }, W, H) => `${DWD_RADAR}/wms?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=Radar_wn-analysis_1x1km_ger`
+      + `&STYLES=&CRS=EPSG:4326&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${time.toISOString()}`;
+    return { time, urlFor, url: urlFor(DE_RADAR_BOX, 1600, 976), transform: recolourDwdRadar };
+  });
+  return { frames, box: DE_RADAR_BOX, native: 0.0108 }; // 1 km composite
 }

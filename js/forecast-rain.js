@@ -1,3 +1,5 @@
+import { recolourDwdRain } from './recolour.js';
+
 // The "next 12 hours" rain animation, from two sources:
 //
 // - Lower 48 states: NOAA's HRRR model, the 3 km "forecast radar"
@@ -53,46 +55,6 @@ const DWD = 'https://maps.dwd.de/geoserver/dwd/wms';
 export const ICON_EU_BOX = { w: -23.5, s: 29.5, e: 62.5, n: 70.5 };
 const inIconEu = (lat, lon) => lat > ICON_EU_BOX.s + 2 && lat < ICON_EU_BOX.n - 2 && lon > ICON_EU_BOX.w + 2 && lon < ICON_EU_BOX.e - 2;
 
-// DWD's colour classes (mm in the past hour) mapped onto the radar palette.
-const DWD_CLASSES = [
-  ['C0C0C0', [80, 170, 255, 0.78]],   // 0.1-2
-  ['FEFEC0', [40, 200, 90, 0.85]],    // 2-5
-  ['FEFE5B', [250, 220, 40, 0.88]],   // 5-10
-  ['CFF200', [250, 150, 20, 0.9]],    // 10-15
-  ['A0D625', [250, 100, 20, 0.92]],   // 15-20
-  ['36C969', [230, 30, 40, 0.95]],    // 20-25
-  ['00D7D7', [215, 25, 60, 0.95]],    // 25-30
-  ['00A6DD', [200, 30, 110, 0.97]],   // 30-40
-  ['0000FE', [200, 40, 200, 1]],      // 40-60
-  ['9730C2', [220, 90, 240, 1]],      // 60-80
-  ['D926C7', [235, 140, 255, 1]],     // 80-100
-  ['FE0000', [245, 190, 255, 1]],     // 100-130
-  ['A00000', [250, 220, 255, 1]],     // 130-160
-  ['606060', [255, 240, 255, 1]],     // 160+
-].map(([hex, to]) => [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4), 16), to]);
-
-function recolourDwd(ctx, W, H) {
-  const img = ctx.getImageData(0, 0, W, H), d = img.data;
-  const memo = new Map();
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] === 0) continue;
-    const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
-    let to = memo.get(key);
-    if (!to) {
-      // Nearest class colour (images are crisp, but this tolerates edges).
-      let best = DWD_CLASSES[0], bd = Infinity;
-      for (const c of DWD_CLASSES) {
-        const dd = (c[0] - d[i]) ** 2 + (c[1] - d[i + 1]) ** 2 + (c[2] - d[i + 2]) ** 2;
-        if (dd < bd) { bd = dd; best = c; }
-      }
-      to = best[3];
-      memo.set(key, to);
-    }
-    d[i] = to[0]; d[i + 1] = to[1]; d[i + 2] = to[2]; d[i + 3] = Math.round(to[3] * d[i + 3]);
-  }
-  ctx.putImageData(img, 0, 0);
-}
-
 async function fetchIconEu() {
   // Hourly totals valid at each hour: from the next full hour, 13 frames.
   const first = Math.ceil(Date.now() / 36e5) * 36e5;
@@ -100,7 +62,7 @@ async function fetchIconEu() {
     const time = new Date(first + h * 36e5);
     const urlFor = ({ w, s, e, n }, W, H) => `${DWD}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=Icon-eu_reg00625_fd_sl_TOTPREC01H`
       + `&STYLES=&CRS=EPSG:4326&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${time.toISOString()}`;
-    return { time, urlFor, url: urlFor(ICON_EU_BOX, 2048, 976), transform: recolourDwd };
+    return { time, urlFor, url: urlFor(ICON_EU_BOX, 2048, 976), transform: recolourDwdRain };
   });
   // Make sure the model run actually has these hours before committing to it.
   const probe = await fetch(frames[0].url);

@@ -8,7 +8,7 @@
 // - Everything else (forecasts, radar, satellite frames): straight to the
 //   network and never cached, so weather is never stale.
 
-const CACHE = 'global-forecast-v1';
+const CACHE = 'blue-marble-forecast-v1';
 const IMMUTABLE = /BlueMarble_NextGeneration&WIDTH=4096|VIIRS_Black_Marble&WIDTH=4096|cdn\.jsdelivr\.net\/npm\/three@|fonts\.(googleapis|gstatic)\.com/;
 
 self.addEventListener('install', () => self.skipWaiting());

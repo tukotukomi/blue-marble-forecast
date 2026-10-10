@@ -67,7 +67,12 @@ export class FrameLayer {
   // takes effect when the first of them is actually on screen.
   async setFrames(frames, { keepIndex = false, box = null } = {}) {
     this.pendingBox = box;
-    const keep = new Set(frames.flatMap(urlsOf));
+    // A plain setFrames is a new "base" set (the whole area). keepIndex swaps
+    // (sharper frames for the view) keep the base downloads, so zooming back
+    // out is instant, and only drop the previous sharper set.
+    const urls = frames.flatMap(urlsOf);
+    if (!keepIndex) this.baseUrls = new Set(urls);
+    const keep = new Set([...urls, ...(this.baseUrls ?? [])]);
     for (const [url, p] of this.blobs) {
       if (!keep.has(url)) { p.then(u => u && URL.revokeObjectURL(u)); this.blobs.delete(url); }
     }

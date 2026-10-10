@@ -1,6 +1,6 @@
 import { CITIES } from './cities.js';
 import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js';
-import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchPlaces } from './data.js';
+import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchGermanRadar, fetchPlaces } from './data.js';
 import { fetchForecastRain } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
 import { createGlobe } from './globe.js';
@@ -676,12 +676,18 @@ const anim = {
   playing: true,
   sat: { frames: [], idx: -1, status: 'off' },   // status: off | loading | ready | error
   radar: { frames: [], idx: -1, status: 'off' },
+  radar2: { frames: [], idx: -1, status: 'off' },
   fcst: { frames: [], idx: -1, status: 'off' },
 };
-const ANIM_KEYS = ['sat', 'radar', 'fcst'];
+const ANIM_KEYS = ['sat', 'radar', 'radar2', 'fcst'];
+// Layers that share another layer's switch: "High resolution radar" drives
+// both North America (radar) and Germany (radar2).
+const SWITCH_OF = { radar2: 'radar' };
+const isOn = k => !!state.layers[SWITCH_OF[k] ?? k];
 const ANIM_SOURCES = {
   sat: { fetch: fetchSatFrames, everyMin: 15 },
   radar: { fetch: fetchHiResRadar, everyMin: 6 },
+  radar2: { fetch: fetchGermanRadar, everyMin: 5 },
   fcst: { fetch: () => fetchForecastRain(state.viewing.lat, state.viewing.lon), everyMin: 30 },
 };
 const animTimers = {};
@@ -691,7 +697,7 @@ async function refreshFrames(name) {
   if (!a.frames.length) { a.status = 'loading'; updateLayersUI(); }
   try {
     const out = await ANIM_SOURCES[name].fetch(); // { frames, box, native? }
-    if (!state.layers[name]) return;
+    if (!isOn(name)) return;
     a.frames = out.frames;
     a.box = out.box;
     a.native = out.native; // degrees per data pixel; absent for frames drawn in the page
@@ -708,14 +714,16 @@ async function refreshFrames(name) {
 function setLayer(name, on) {
   state.layers[name] = on;
   store.set('layers', state.layers);
-  globe?.setLayer(name, on);
-  if (!(name in ANIM_SOURCES)) return;
-  clearInterval(animTimers[name]);
-  if (on) {
-    refreshFrames(name);
-    animTimers[name] = setInterval(() => refreshFrames(name), ANIM_SOURCES[name].everyMin * 60e3);
-  } else {
-    anim[name].status = 'off';
+  for (const k of [name, ...ANIM_KEYS.filter(k => SWITCH_OF[k] === name)]) {
+    globe?.setLayer(k, on);
+    if (!(k in ANIM_SOURCES)) continue;
+    clearInterval(animTimers[k]);
+    if (on) {
+      refreshFrames(k);
+      animTimers[k] = setInterval(() => refreshFrames(k), ANIM_SOURCES[k].everyMin * 60e3);
+    } else {
+      anim[k].status = 'off';
+    }
   }
 }
 
@@ -752,7 +760,7 @@ function onLayerFrame(name, idx) {
 
 function layersHTML() {
   const sw = (key, label) => `<label class="switch"><input type="checkbox" data-layer="${key}" ${state.layers[key] ? 'checked' : ''}><span></span>${esc(label)}</label>`;
-  const rows = ANIM_KEYS.filter(k => state.layers[k]).map(k => {
+  const rows = ANIM_KEYS.filter(isOn).map(k => {
     const a = anim[k];
     return `<div class="anim-row">
       <div class="anim-head"><b>${esc(t(`anim.${k}`))}</b><span id="anim-${k}-time">${esc(frameLabel(k))}</span></div>
@@ -813,7 +821,7 @@ function onViewSettled(view) {
 const wrapLon = x => ((((x % 360) + 540) % 360) - 180);
 function updateHiRes(name) {
   const a = anim[name];
-  if (!globe || !state.layers[name] || a.status !== 'ready' || !a.native || !a.frames[0]?.urlFor) return;
+  if (!globe || !isOn(name) || a.status !== 'ready' || !a.native || !a.frames[0]?.urlFor) return;
   const full = a.box, view = settledView;
   const revert = () => {
     if (!hiRes[name]) return;

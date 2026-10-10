@@ -40,13 +40,15 @@ async function fetchHrrr() {
   return { frames, box: HRRR_BOX, source: 'hrrr', native: 0.027 }; // HRRR: 3 km
 }
 
-export async function fetchForecastRain(lat, lon) {
-  if (inHrrr(lat, lon)) {
+// use: which sources the visitor allows (Settings > Data sources).
+export async function fetchForecastRain(lat, lon, use = { hrrr: true, iconEu: true, gfs: true }) {
+  if (use.hrrr && inHrrr(lat, lon)) {
     try { return await fetchHrrr(); } catch { /* fall back to the GFS grid */ }
   }
-  if (inIconEu(lat, lon)) {
+  if (use.iconEu && inIconEu(lat, lon)) {
     try { return await fetchIconEu(); } catch { /* fall back to the GFS grid */ }
   }
+  if (!use.gfs) throw new Error('No forecast source enabled here');
   return fetchGfsGrid(lat, lon);
 }
 

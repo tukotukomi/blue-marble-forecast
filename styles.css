@@ -632,3 +632,13 @@ body.has-pad .pad-help { display: block; }
 .pad-keys li { display: flex; align-items: baseline; gap: 8px; }
 .pad-keys kbd { flex: none; font: inherit; font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 8px; background: #edf1f6; color: var(--wii-deep); }
 .pad-keys .pad-note { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12px; }
+
+/* ---------- data sources (Settings) ---------- */
+.sources { padding: 14px 0 16px; border-bottom: 1px solid rgba(34, 50, 74, 0.1); }
+.sources h3 { margin: 0 0 2px; }
+.sources-list h4 { margin: 12px 0 6px; font-size: 13px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+.source-row { align-items: flex-start; padding: 6px 0; }
+.source-row div { display: flex; flex-direction: column; line-height: 1.3; }
+.source-row small { font-weight: 500; font-size: 12px; color: var(--ink-soft); }
+/* .pill sets display, which would otherwise override the hidden attribute. */
+#install-btn[hidden] { display: none; }

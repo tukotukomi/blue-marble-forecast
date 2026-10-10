@@ -683,12 +683,20 @@ const ANIM_KEYS = ['sat', 'radar', 'radar2', 'fcst'];
 // Layers that share another layer's switch: "High resolution radar" drives
 // both North America (radar) and Germany (radar2).
 const SWITCH_OF = { radar2: 'radar' };
-const isOn = k => !!state.layers[SWITCH_OF[k] ?? k];
+// Individual services (Settings > Data sources). Radar areas are separate
+// animated layers; forecast sources are choices inside the one forecast layer.
+const SOURCE_OF_LAYER = { radar: 'radarNA', radar2: 'radarDE' };
+const DATA_SOURCES = [
+  { group: 'globe.radar', items: ['radarNA', 'radarDE'] },
+  { group: 'globe.fcst', items: ['hrrr', 'iconEu', 'gfs'] },
+];
+state.sources = { radarNA: true, radarDE: true, hrrr: true, iconEu: true, gfs: true, ...store.get('sources', {}) };
+const isOn = k => !!state.layers[SWITCH_OF[k] ?? k] && (!SOURCE_OF_LAYER[k] || !!state.sources[SOURCE_OF_LAYER[k]]);
 const ANIM_SOURCES = {
   sat: { fetch: fetchSatFrames, everyMin: 15 },
   radar: { fetch: fetchHiResRadar, everyMin: 6 },
   radar2: { fetch: fetchGermanRadar, everyMin: 5 },
-  fcst: { fetch: () => fetchForecastRain(state.viewing.lat, state.viewing.lon), everyMin: 30 },
+  fcst: { fetch: () => fetchForecastRain(state.viewing.lat, state.viewing.lon, state.sources), everyMin: 30 },
 };
 const animTimers = {};
 
@@ -714,17 +722,41 @@ async function refreshFrames(name) {
 function setLayer(name, on) {
   state.layers[name] = on;
   store.set('layers', state.layers);
-  for (const k of [name, ...ANIM_KEYS.filter(k => SWITCH_OF[k] === name)]) {
-    globe?.setLayer(k, on);
-    if (!(k in ANIM_SOURCES)) continue;
-    clearInterval(animTimers[k]);
-    if (on) {
-      refreshFrames(k);
-      animTimers[k] = setInterval(() => refreshFrames(k), ANIM_SOURCES[k].everyMin * 60e3);
-    } else {
-      anim[k].status = 'off';
-    }
+  for (const k of [name, ...ANIM_KEYS.filter(k => SWITCH_OF[k] === name)]) syncLayer(k);
+}
+
+// Start or stop one animated layer to match its switch and data source.
+function syncLayer(k) {
+  const on = k in ANIM_SOURCES ? isOn(k) : !!state.layers[k];
+  globe?.setLayer(k, on);
+  if (!(k in ANIM_SOURCES)) return;
+  clearInterval(animTimers[k]);
+  if (on) {
+    refreshFrames(k);
+    animTimers[k] = setInterval(() => refreshFrames(k), ANIM_SOURCES[k].everyMin * 60e3);
+  } else {
+    anim[k] = { frames: [], idx: -1, status: 'off' };
+    hiRes[k] = null;
   }
+}
+
+function setSource(id, on) {
+  state.sources[id] = on;
+  store.set('sources', state.sources);
+  const layer = Object.keys(SOURCE_OF_LAYER).find(k => SOURCE_OF_LAYER[k] === id);
+  if (layer) syncLayer(layer);
+  else if (isOn('fcst')) { anim.fcst.frames = []; refreshFrames('fcst'); } // forecast sources
+  updateLayersUI();
+}
+
+function renderSources() {
+  $('#sources-list').innerHTML = DATA_SOURCES.map(({ group, items }) => `<h4>${esc(t(group))}</h4>
+    ${items.map(id => `<label class="switch source-row"><input type="checkbox" data-source="${id}" ${state.sources[id] ? 'checked' : ''}><span></span>
+      <div><b>${esc(t(`src.${id}.name`))}</b><small>${esc(t(`src.${id}.desc`))}</small></div></label>`).join('')}`).join('');
+  document.querySelectorAll('#sources-list [data-source]').forEach(inp => inp.addEventListener('change', () => {
+    blip('select');
+    setSource(inp.dataset.source, inp.checked);
+  }));
 }
 
 function applyPlaying() {
@@ -1112,6 +1144,7 @@ $('#explore-exit').addEventListener('click', () => { blip('select'); setExplore(
 function applyLanguage() {
   renderLangButton();
   renderInstall();
+  renderSources();
   syncFullscreen();
   if (getLang() === 'zh-cn' && !$('#font-zh')) {
     const link = Object.assign(document.createElement('link'), {

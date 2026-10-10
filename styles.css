@@ -569,3 +569,12 @@ body[data-scale="1x"] .ticker,
 body[data-scale="1x"] .explore-exit,
 body[data-scale="1x"] .toast,
 body[data-scale="1x"] .sheet { zoom: 0.75; }
+
+/* ---------- full screen ---------- */
+#fullscreen .fs-exit { display: none; }
+body.is-fullscreen #fullscreen .fs-enter { display: none; }
+body.is-fullscreen #fullscreen .fs-exit { display: block; }
+#fullscreen[hidden] { display: none; }
+@media (max-width: 860px) {
+  .top-actions .round { width: 38px; height: 38px; }
+}

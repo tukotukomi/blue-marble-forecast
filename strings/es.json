@@ -8,6 +8,8 @@
   "top.music": "Música",
   "top.about": "Acerca de y fuentes de datos",
   "settings.title": "Ajustes",
+  "fullscreen.enter": "Pantalla completa",
+  "fullscreen.exit": "Salir de pantalla completa",
   "settings.scale": "Tamaño de la interfaz",
   "settings.scaleHint": "2x es el tamaño estándar. 1x muestra ventanas más pequeñas para que se vea más del globo.",
   "top.language": "Idioma",

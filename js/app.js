@@ -921,6 +921,33 @@ scaleRadios.forEach((b, i) => {
 });
 applyScale();
 
+// ---------- full screen ----------
+// Hides the browser's own toolbars. iPhone Safari doesn't allow this for
+// web pages, so the button only appears where the Fullscreen API exists.
+const fsBtn = $('#fullscreen');
+const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+if (document.fullscreenEnabled || document.webkitFullscreenEnabled) {
+  fsBtn.hidden = false;
+  fsBtn.addEventListener('click', async () => {
+    blip('select');
+    try {
+      if (fsElement()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else await (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement, { navigationUI: 'hide' });
+    } catch { /* the browser refused (e.g. not from a user gesture) */ }
+  });
+  document.addEventListener('fullscreenchange', syncFullscreen);
+  document.addEventListener('webkitfullscreenchange', syncFullscreen);
+}
+function syncFullscreen() {
+  if (fsBtn.hidden) return;
+  const on = !!fsElement();
+  document.body.classList.toggle('is-fullscreen', on);
+  const label = t(on ? 'fullscreen.exit' : 'fullscreen.enter');
+  fsBtn.setAttribute('aria-label', label);
+  fsBtn.title = label;
+  fsBtn.setAttribute('aria-pressed', String(on));
+}
+
 // ---------- explore mode (Globe & Region) ----------
 // Hides the bars, panel, dock and ticker so the Earth gets the whole screen,
 // which matters most on phones. A small pill brings everything back.
@@ -940,6 +967,7 @@ $('#explore-exit').addEventListener('click', () => { blip('select'); setExplore(
 // Re-render every piece of text after a language change.
 function applyLanguage() {
   renderLangButton();
+  syncFullscreen();
   if (getLang() === 'zh-cn' && !$('#font-zh')) {
     const link = Object.assign(document.createElement('link'), {
       id: 'font-zh', rel: 'stylesheet',

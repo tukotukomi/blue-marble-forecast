@@ -14,6 +14,7 @@ const HOLD_END = 1600; // pause on the newest frame before looping
 function makeTexture(image) {
   const t = new THREE.Texture(image);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.premultiplyAlpha = true; // clean filtering at rain edges (the shader un-premultiplies)
   t.generateMipmaps = false;
   t.minFilter = THREE.LinearFilter;
   t.needsUpdate = true;
@@ -59,7 +60,11 @@ export class FrameLayer {
   }
 
   // Swap in a fresh list of frames, keeping already-downloaded ones.
-  async setFrames(frames) {
+  // keepIndex: stay on the same frame (used when sharper frames for the same
+  // times replace the current ones). box: the area these frames cover; it
+  // takes effect when the first of them is actually on screen.
+  async setFrames(frames, { keepIndex = false, box = null } = {}) {
+    this.pendingBox = box;
     const keep = new Set(frames.map(f => f.url).filter(Boolean));
     for (const [url, p] of this.blobs) {
       if (!keep.has(url)) { p.then(u => u && URL.revokeObjectURL(u)); this.blobs.delete(url); }
@@ -68,7 +73,8 @@ export class FrameLayer {
     if (!frames.length) return;
     // Show the newest observation (or, for a forecast, "now") straight away,
     // then fetch the rest in the background.
-    await this.seek(this.forward ? 0 : frames.length - 1);
+    const start = keepIndex && this.idx >= 0 ? Math.min(this.idx, frames.length - 1) : this.forward ? 0 : frames.length - 1;
+    await this.seek(start);
     this.prefetch();
   }
 
@@ -80,9 +86,11 @@ export class FrameLayer {
   }
 
   async prefetch() {
-    // Two at a time, starting from "now" so the loop fills in from there.
-    const urls = this.frames.map(f => f.url).filter(Boolean);
-    const queue = this.forward ? urls : urls.reverse();
+    // Two at a time, starting from the frame on screen and going the way the
+    // loop plays, so the next frames are ready first.
+    const urls = this.frames.map(f => f.url);
+    const from = Math.max(0, this.idx);
+    const queue = [...urls.slice(from), ...urls.slice(0, from)].filter(Boolean);
     const worker = async () => { while (queue.length) await this.blob(queue.shift()); };
     await Promise.all([worker(), worker()]);
   }
@@ -102,6 +110,7 @@ export class FrameLayer {
     const img = await this.decode(i);
     if (token !== this.token || !img) return;
     this.texA = withImage(this.texA, img);
+    if (this.pendingBox) { this.box = this.pendingBox; this.pendingBox = null; }
     this.idx = i;
     this.mix = 0;
     this.bIdx = -1;

@@ -26,16 +26,13 @@ async function fetchHrrr() {
   const start = Math.max(0, Math.floor((Date.now() - init) / 60e3 / 30) * 30);
   const frames = [];
   for (let m = start; m <= Math.min(start + HOURS * 60, maxMin); m += 30) {
-    const { w, s, e, n } = HRRR_BOX;
-    frames.push({
-      time: new Date(init + m * 60e3),
-      // Layer names are reused by every run, so the run time keeps caches apart.
-      url: `${IEM}/cgi-bin/wms/hrrr/refd.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=refd_${String(m).padStart(4, '0')}`
-        + `&STYLES=&SRS=EPSG:4326&BBOX=${w},${s},${e},${n}&WIDTH=2048&HEIGHT=888&FORMAT=image/png&TRANSPARENT=TRUE&run=${init}`,
-    });
+    // Layer names are reused by every run, so the run time keeps caches apart.
+    const urlFor = ({ w, s, e, n }, W, H) => `${IEM}/cgi-bin/wms/hrrr/refd.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=refd_${String(m).padStart(4, '0')}`
+      + `&STYLES=&SRS=EPSG:4326&BBOX=${w},${s},${e},${n}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&run=${init}`;
+    frames.push({ time: new Date(init + m * 60e3), urlFor, url: urlFor(HRRR_BOX, 2048, 888) });
   }
   if (frames.length < 2) throw new Error('HRRR run too old');
-  return { frames, box: HRRR_BOX, source: 'hrrr' };
+  return { frames, box: HRRR_BOX, source: 'hrrr', native: 0.027 }; // HRRR: 3 km
 }
 
 export async function fetchForecastRain(lat, lon) {

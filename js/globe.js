@@ -66,15 +66,51 @@ void main() {
 
 const FRAG = `
 uniform sampler2D dayTex, nightTex, satA, satB, radA, radB, fcstA, fcstB, detailDay, detailNight;
-uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uFcst, fcstMix, uDetail;
+uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uFcst, fcstMix, uDetail, uGrain;
 // Image patches as (west, south, width, height) in degrees. West may be any
 // longitude, so a patch can straddle the date line.
-uniform vec4 radBox, fcstBox, detailBox;
+uniform vec4 satBox, radBox, fcstBox, detailBox;
 varying vec2 vUv; varying vec3 vN; varying vec3 vW;
 vec2 boxUv(vec2 ll, vec4 box) {
   return vec2(mod(ll.x - box.x + 360.0, 360.0) / box.z, (ll.y - box.y) / box.w);
 }
 float inside(vec2 uv) { return step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0); }
+
+// Smooth (cubic B-spline) texture filtering in 4 bilinear taps, so rain and
+// radar images upscale into soft shapes instead of visible pixel blocks.
+vec4 cubicW(float v) {
+  vec4 n = vec4(1.0, 2.0, 3.0, 4.0) - v;
+  vec4 c = n * n * n;
+  float x = c.x, y = c.y - 4.0 * c.x, z = c.z - 4.0 * c.y + 6.0 * c.x;
+  return vec4(x, y, z, 6.0 - x - y - z) / 6.0;
+}
+vec4 smoothTex(sampler2D tex, vec2 uv) {
+  vec2 size = vec2(textureSize(tex, 0));
+  vec2 p = uv * size - 0.5;
+  vec2 fr = fract(p);
+  p -= fr;
+  vec4 xc = cubicW(fr.x), yc = cubicW(fr.y);
+  vec4 c = p.xxyy + vec2(-0.5, 1.5).xyxy;
+  vec4 w = vec4(xc.xz + xc.yw, yc.xz + yc.yw);
+  vec4 o = (c + vec4(xc.yw, yc.yw) / w) / size.xxyy;
+  float sx = w.x / (w.x + w.y), sy = w.z / (w.z + w.w);
+  return mix(mix(texture2D(tex, o.yw), texture2D(tex, o.xw), sx), mix(texture2D(tex, o.yz), texture2D(tex, o.xz), sx), sy);
+}
+// One animated overlay: cross-fade two frames, smooth them, then turn the
+// blurred coverage into a clean contour. Frames are uploaded with
+// premultiplied alpha so edges don't pick up dark fringes.
+// Value noise for ragged rain edges up close (purely cosmetic: the data is
+// ~3-11 km per cell, so smooth edges would look like plastic blobs).
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+vec4 overlay(sampler2D a, sampler2D b, vec2 uv, float m, float grain) {
+  vec4 c = mix(smoothTex(a, uv), smoothTex(b, uv), m);
+  return vec4(c.rgb / max(c.a, 0.001), smoothstep(0.12 + grain, 0.6 + grain, c.a));
+}
 void main() {
   vec3 n = normalize(vN);
   float d = dot(n, sunDir);
@@ -100,12 +136,22 @@ void main() {
   float rIn = inside(ruv) * uRad;
   vec2 fuv = boxUv(ll, fcstBox);
   float fIn = inside(fuv) * uFcst;
-  vec4 s = mix(texture2D(satA, vUv), texture2D(satB, vUv), satMix);
-  col = mix(col, s.rgb, s.a * uSat * (1.0 - rIn) * (1.0 - fIn) * 0.85);
-  vec4 r = mix(texture2D(radA, ruv), texture2D(radB, ruv), radMix);
-  col = mix(col, r.rgb, r.a * rIn * (1.0 - fIn) * 0.9);
-  vec4 f = mix(texture2D(fcstA, fuv), texture2D(fcstB, fuv), fcstMix);
-  col = mix(col, f.rgb, f.a * fIn * 0.9);
+  // Edge roughness in degrees-space (~3 km and ~1 km features), faded in with zoom.
+  float grain = uGrain > 0.0 ? (vnoise(ll * 36.0) * 0.65 + vnoise(ll * 110.0) * 0.35 - 0.5) * 0.3 * uGrain : 0.0;
+  vec2 suv = boxUv(ll, satBox);
+  float sIn = inside(suv) * uSat;
+  if (sIn > 0.0) {
+    vec4 o = overlay(satA, satB, suv, satMix, grain);
+    col = mix(col, o.rgb, o.a * sIn * (1.0 - rIn) * (1.0 - fIn) * 0.85);
+  }
+  if (rIn > 0.0) {
+    vec4 o = overlay(radA, radB, ruv, radMix, grain);
+    col = mix(col, o.rgb, o.a * rIn * (1.0 - fIn) * 0.9);
+  }
+  if (fIn > 0.0) {
+    vec4 o = overlay(fcstA, fcstB, fuv, fcstMix, grain);
+    col = mix(col, o.rgb, o.a * fIn * 0.9);
+  }
   // Atmospheric rim.
   vec3 v = normalize(cameraPosition - vW);
   float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
@@ -135,7 +181,7 @@ function blankTex(rgba) {
   return t;
 }
 
-export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, onLabelClick, onNeedWeather, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
+export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, onLabelClick, onNeedWeather, onViewSettled, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
   // Set whenever the scene needs a redraw; see the main loop below.
   let dirty = true;
   const invalidate = () => { dirty = true; };
@@ -161,11 +207,13 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     sunDir: { value: new THREE.Vector3(1, 0, 0) },
     uNight: { value: 1 },
     uSat: { value: 0 }, satMix: { value: 0 }, satA: { value: null }, satB: { value: null },
+    satBox: { value: new THREE.Vector4(-180, -90, 360, 180) },
     uRad: { value: 0 }, radMix: { value: 0 }, radA: { value: null }, radB: { value: null },
     radBox: { value: new THREE.Vector4(RADAR_BOX.w, RADAR_BOX.s, RADAR_BOX.e - RADAR_BOX.w, RADAR_BOX.n - RADAR_BOX.s) },
     uFcst: { value: 0 }, fcstMix: { value: 0 }, fcstA: { value: null }, fcstB: { value: null },
     fcstBox: { value: new THREE.Vector4(0, 0, 1, 1) },
     uDetail: { value: 0 }, detailDay: { value: null }, detailNight: { value: null },
+    uGrain: { value: 0 },
     detailBox: { value: new THREE.Vector4(0, 0, 1, 1) },
   };
   const loaded = {};
@@ -199,6 +247,8 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     for (const [k, layer] of Object.entries(anims)) {
       const [, a, b, m] = ANIM_UNIFORMS[k];
       uniforms[a].value = layer.texA; uniforms[b].value = layer.texB; uniforms[m].value = layer.mix;
+      const box = layer.box, u = uniforms[k === 'sat' ? 'satBox' : k === 'radar' ? 'radBox' : 'fcstBox'];
+      if (box) u.value.set(box.w, box.s, box.e - box.w, box.n - box.s);
     }
   }
   bindAnims();
@@ -535,7 +585,13 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
   // Runs every frame: fades the patch with altitude and, once the camera has
   // rested for a moment, fetches a new patch if the view has moved off it.
   function detailTick(now, dt, moved) {
-    if (moved) detail.movedAt = now;
+    if (moved) { detail.movedAt = now; detail.reported = false; }
+    // Tell the app once per stop where the camera came to rest, so the
+    // precipitation layers can fetch sharper frames for that area.
+    if (!detail.reported && !anim && !pointers.size && now - detail.movedAt > 400) {
+      detail.reported = true;
+      onViewSettled?.(cam.dist < DETAIL_DIST ? viewBox() : null);
+    }
     const target = detail.box && cam.dist < DETAIL_DIST + 0.1 ? 1 : 0;
     const u = uniforms.uDetail;
     if (u.value !== target) {
@@ -618,6 +674,9 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     if (Math.abs(offset.x) > 0.5 || Math.abs(offset.y) > 0.5) camera.setViewOffset(w, h, -offset.x, offset.y, w, h);
     else camera.clearViewOffset();
     constMat.opacity = THREE.MathUtils.clamp((cam.dist - 3) / 2, 0, 0.55);
+    // Rain-edge roughness only up close, where it's finer than the data; far
+    // out it would be smaller than a pixel and just shimmer.
+    uniforms.uGrain.value = THREE.MathUtils.clamp((1.6 - cam.dist) / 0.4, 0, 1);
     renderer.render(scene, camera);
     layoutLabels(w, h);
     adapt(now);
@@ -666,9 +725,10 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     },
     // frames: [{ time: Date, url } | { time: Date, image }], oldest first.
     // box: { w, s, e, n } for layers that cover only part of the globe.
-    setFrames(name, frames, box) {
-      if (box && name === 'fcst') uniforms.fcstBox.value.set(box.w, box.s, box.e - box.w, box.n - box.s);
-      return anims[name].setFrames(frames);
+    // keepIndex: swap in sharper frames for the same times without restarting the loop.
+    setFrames(name, frames, box, { keepIndex = false } = {}) {
+      // The box is applied when the first new frame is on screen (see bindAnims).
+      return anims[name].setFrames(frames, { keepIndex, box });
     },
     setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; },
     seek(name, i) { return anims[name].seek(i); },

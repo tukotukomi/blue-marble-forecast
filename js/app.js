@@ -123,6 +123,7 @@ const globe = createGlobe(globeHost, {
   onLayerFrame,
   onLabelClick: openCity,
   onNeedWeather,
+  onViewSettled,
   onPick(lat, lon, x, y) {
     closePick();
     pickCard = document.createElement('div');
@@ -687,13 +688,16 @@ async function refreshFrames(name) {
   const a = anim[name];
   if (!a.frames.length) { a.status = 'loading'; updateLayersUI(); }
   try {
-    const out = await ANIM_SOURCES[name].fetch();
+    const out = await ANIM_SOURCES[name].fetch(); // { frames, box, native? }
     if (!state.layers[name]) return;
-    const frames = Array.isArray(out) ? out : out.frames; // the forecast also returns its box
-    a.frames = frames;
+    a.frames = out.frames;
+    a.box = out.box;
+    a.native = out.native; // degrees per data pixel; absent for frames drawn in the page
     a.status = 'ready';
+    hiRes[name] = null;
     updateLayersUI();
-    await globe?.setFrames(name, frames, out.box);
+    await globe?.setFrames(name, out.frames, out.box);
+    updateHiRes(name); // re-apply sharper frames if zoomed in
   } catch {
     if (!a.frames.length) { a.status = 'error'; updateLayersUI(); }
   }
@@ -790,6 +794,55 @@ function updateLayersUI() {
   box.outerHTML = layersHTML();
   bindLayers();
   if (focusedId) (document.getElementById(focusedId) || $(`#layers [data-layer="${focusedId}"]`))?.focus();
+}
+
+// ---------- sharper precipitation when zoomed in ----------
+// The whole-area satellite frames are ~20 km per pixel against ~11 km data.
+// When the camera settles while zoomed in, each layer re-requests the same
+// frames for just the area in view, up to the data's own resolution, and
+// swaps them in without restarting the loop. (Radar and HRRR whole-area frames
+// are already close to their ~3-4 km data, so they rarely need this.)
+const hiRes = {};  // name -> box of the sharper frames now in use, or null
+let settledView = null;
+function onViewSettled(view) {
+  settledView = view;
+  for (const k of ANIM_KEYS) updateHiRes(k);
+}
+const wrapLon = x => ((((x % 360) + 540) % 360) - 180);
+function updateHiRes(name) {
+  const a = anim[name];
+  if (!globe || !state.layers[name] || a.status !== 'ready' || !a.native || !a.frames[0]?.urlFor) return;
+  const full = a.box, view = settledView;
+  const revert = () => {
+    if (!hiRes[name]) return;
+    hiRes[name] = null;
+    globe.setFrames(name, a.frames, full, { keepIndex: true });
+  };
+  if (!view) return revert();
+  // The view in the layer's longitude range (it may sit across the date line).
+  const shift = wrapLon((view.w + view.e) / 2) - (view.w + view.e) / 2;
+  const mx = (view.e - view.w) * 0.2, my = (view.n - view.s) * 0.2;
+  const box = {
+    w: Math.max(full.w, view.w + shift - mx), e: Math.min(full.e, view.e + shift + mx),
+    s: Math.max(full.s, view.s - my), n: Math.min(full.n, view.n + my),
+  };
+  if (box.e - box.w < 0.05 || box.n - box.s < 0.05) return revert(); // nothing of this layer in view
+  const cur = hiRes[name];
+  if (cur && view.w + shift >= cur.w && view.e + shift <= cur.e && view.s >= cur.s && view.n <= cur.n
+    && cur.e - cur.w < (view.e - view.w) * 3) return; // already sharp enough here
+  // Pixels per degree: screen density, but never finer than the data itself.
+  // Asking for more makes the server repeat each data cell as a solid block;
+  // at one pixel per cell the shader's smoothing turns cells into soft shapes.
+  const pxPerDeg = Math.min((innerWidth * Math.min(devicePixelRatio, 2) * 1.2) / (view.e - view.w), 1 / a.native);
+  const cos = Math.max(0.2, Math.cos(((box.s + box.n) / 2) * Math.PI / 180));
+  let W = (box.e - box.w) * pxPerDeg, H = ((box.n - box.s) * pxPerDeg) / cos;
+  const k = Math.min(1, 2048 / Math.max(W, H));
+  W = Math.max(64, Math.round(W * k)); H = Math.max(64, Math.round(H * k));
+  // Not worth it if it isn't clearly sharper than the whole-area frames.
+  const fullPxPerDeg = 2048 / (full.e - full.w);
+  if (W / (box.e - box.w) < fullPxPerDeg * 1.5) return revert();
+  hiRes[name] = box;
+  globe.setFrames(name, a.frames.map(f => ({ time: f.time, url: f.urlFor(box, W, H) })), box, { keepIndex: true });
 }
 
 // ---------- locations ----------

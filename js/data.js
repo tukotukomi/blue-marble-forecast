@@ -149,15 +149,17 @@ export async function fetchSatFrames(count = 16) {
   // newest time is the end of the last entry.
   const last = domain.split(',').pop().split('/');
   const latest = new Date(last.length > 1 ? last[1] : last[0]).getTime();
-  return Array.from({ length: count }, (_, k) => {
+  // urlFor(box, w, h) renders the same frame for any area; the app uses it
+  // for sharper frames of just the area on screen when zoomed in.
+  const frames = Array.from({ length: count }, (_, k) => {
     const time = new Date(latest - (count - 1 - k) * 30 * 60e3);
-    return {
-      time,
-      url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326'
-        + `&LAYERS=IMERG_Precipitation_Rate_30min&STYLES=&BBOX=-90,-180,90,180&WIDTH=2048&HEIGHT=1024&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${iso(time)}`,
-    };
+    const urlFor = ({ w, s, e, n }, W, H) => 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326'
+      + `&LAYERS=IMERG_Precipitation_Rate_30min&STYLES=&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${iso(time)}`;
+    return { time, urlFor, url: urlFor(GLOBAL_BOX, 2048, 1024) };
   });
+  return { frames, box: GLOBAL_BOX, native: 0.1 }; // IMERG grid: 0.1 degrees
 }
+export const GLOBAL_BOX = { w: -180, s: -90, e: 180, n: 90 };
 
 // NOAA's weather-radar mosaic for the lower 48 states (nowCOAST), refreshed
 // every few minutes. Its own capabilities document lists the available scan
@@ -181,13 +183,13 @@ export async function fetchRadarFrames(minutes = 120, stepMin = 10) {
   for (let i = times.length - 1; i >= 0 && times[i].t >= newest - minutes * 60e3; i--) {
     if (!picked.length || picked.at(-1).t - times[i].t >= stepMin * 60e3 * 0.9) picked.push(times[i]);
   }
-  const { w, s, e, n } = RADAR_BOX;
-  return picked.reverse().map(({ raw, t }) => ({
-    time: new Date(t),
+  const frames = picked.reverse().map(({ raw, t }) => {
     // Use the scan time exactly as published: the server only matches exact values.
-    url: `${NOWCOAST}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=base_reflectivity_mosaic&STYLES=&CRS=EPSG:4326`
-      + `&BBOX=${s},${w},${n},${e}&WIDTH=2048&HEIGHT=1024&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${encodeURIComponent(raw)}`,
-  }));
+    const urlFor = ({ w, s, e, n }, W, H) => `${NOWCOAST}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=base_reflectivity_mosaic&STYLES=&CRS=EPSG:4326`
+      + `&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${encodeURIComponent(raw)}`;
+    return { time: new Date(t), urlFor, url: urlFor(RADAR_BOX, 2048, 1024) };
+  });
+  return { frames, box: RADAR_BOX, native: 0.035 }; // mosaic cells: ~4 km
 }
 
 // ---- More cities to explore ----

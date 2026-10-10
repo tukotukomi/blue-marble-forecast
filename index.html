@@ -52,8 +52,8 @@
       <button id="music" class="round glass" type="button" data-i18n-attr="aria-label:top.music;title:top.music" aria-label="Music" title="Music">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/><path class="mute" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
       </button>
-      <button id="info" class="round glass" type="button" data-i18n-attr="aria-label:top.about;title:top.about" aria-label="About and data sources" title="About">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.4" fill="currentColor"/></svg>
+      <button id="info" class="round glass" type="button" aria-haspopup="dialog" data-i18n-attr="aria-label:settings.title;title:settings.title" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4.9a7.6 7.6 0 0 0-2.6-1.5L14 2.4h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.4l-2.4-.9-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-.9a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4.9 2-3.4Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       </button>
     </div>
   </header>
@@ -111,13 +111,28 @@
   </dialog>
 
   <dialog id="info-dialog" class="sheet wide">
-    <form method="dialog" class="sheet-head"><h2 data-i18n="about.title">About Global Forecast</h2><button class="round" value="close" data-i18n-attr="aria-label:search.close" aria-label="Close">✕</button></form>
+    <form method="dialog" class="sheet-head"><h2 data-i18n="settings.title">Settings</h2><button class="round" value="close" data-i18n-attr="aria-label:search.close" aria-label="Close">✕</button></form>
+    <section class="setting" aria-labelledby="scale-label">
+      <div class="setting-row">
+        <div>
+          <h3 id="scale-label" data-i18n="settings.scale">Interface size</h3>
+          <p class="fine" data-i18n="settings.scaleHint"></p>
+        </div>
+        <div class="seg scale-seg" role="radiogroup" aria-labelledby="scale-label">
+          <button type="button" role="radio" data-scale="2x">2x</button>
+          <button type="button" role="radio" data-scale="1x">1x</button>
+        </div>
+      </div>
+    </section>
+    <section class="about" aria-labelledby="about-heading">
+    <h3 id="about-heading" class="about-title" data-i18n="about.title">About Global Forecast</h3>
     <p data-i18n="about.intro"></p>
-    <h3 data-i18n="about.sourcesTitle"></h3>
+    <h4 data-i18n="about.sourcesTitle"></h4>
     <ul class="sources" data-i18n="about.sources" data-i18n-html></ul>
-    <h3 data-i18n="about.notesTitle"></h3>
+    <h4 data-i18n="about.notesTitle"></h4>
     <p data-i18n="about.notes"></p>
     <p class="fine" data-i18n="about.tip"></p>
+    </section>
   </dialog>
 
   <button id="explore-exit" class="explore-exit glass" type="button" hidden>

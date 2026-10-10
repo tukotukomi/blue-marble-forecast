@@ -1,6 +1,6 @@
 import { CITIES } from './cities.js';
 import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js';
-import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow } from './data.js';
+import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchRadarFrames } from './data.js';
 import { createGlobe } from './globe.js';
 import { setMusic, blip, unlock } from './audio.js';
 import { LANGUAGES, detectLang, setLang, getLang, locale, searchLang, t, applyStatic } from './i18n.js';
@@ -37,7 +37,7 @@ const state = {
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, precip: false },
+  layers: { night: true, sat: false, radar: false, ...store.get('layers', {}) },
   regionDay: 0,
   view: 'now',
   fc: null, nws: null, pollen: null, cities: [],
@@ -116,6 +116,7 @@ const globe = createGlobe(globeHost, {
   renderLabel,
   safeArea: () => safe,
   onDrag: closePick,
+  onLayerFrame,
   onPick(lat, lon, x, y) {
     closePick();
     pickCard = document.createElement('div');
@@ -324,6 +325,7 @@ function go(id, { sound = true } = {}) {
     else globe.refreshLabels();
   }
   render(true);
+  applyPlaying();
   history.replaceState(null, '', location.search + '#' + id);
 }
 
@@ -502,7 +504,8 @@ const RENDER = {
       <div class="seg" role="group" aria-label="${esc(t('region.day'))}">
         <button type="button" data-day="0" aria-pressed="${state.regionDay === 0}">${esc(t('region.today', { day: dayName(d0, 'short') }))}</button>
         <button type="button" data-day="1" aria-pressed="${state.regionDay === 1}">${esc(t('region.tomorrow', { day: dayName(d1, 'short') }))}</button>
-      </div>`;
+      </div>
+      ${layersHTML()}`;
   },
   uv() {
     const d = dayRow(state.fc, 0), d1 = dayRow(state.fc, 1);
@@ -579,10 +582,7 @@ const RENDER = {
   globe() {
     const s = globe?.sunInfo();
     return `<p class="hint">${esc(t('globe.hint'))}</p>
-      <div class="toggles">
-        <label class="switch"><input type="checkbox" data-layer="night" ${state.layers.night ? 'checked' : ''}><span></span>${esc(t('globe.night'))}</label>
-        <label class="switch"><input type="checkbox" data-layer="precip" ${state.layers.precip ? 'checked' : ''}><span></span>${esc(t('globe.precip'))}</label>
-      </div>
+      ${layersHTML()}
       ${s ? `<p class="fine">${esc(t('globe.sun', { coord: fmtCoord(s.sunLat, ((s.sunLon + 540) % 360) - 180) }))}</p>` : ''}
       ${globe ? '' : `<p class="fine">${esc(t('globe.noWebgl'))}</p>`}`;
   },
@@ -596,6 +596,7 @@ const AFTER = {
       render(false);
       globe?.refreshLabels();
     }));
+    bindLayers();
   },
   pollen() {
     if (state.pollen === null) {
@@ -616,13 +617,129 @@ const AFTER = {
     }
     $('#try-europe')?.addEventListener('click', () => openCity(cityByName('Paris')));
   },
-  globe() {
-    document.querySelectorAll('[data-layer]').forEach(inp => inp.addEventListener('change', () => {
-      state.layers[inp.dataset.layer] = inp.checked;
-      globe?.setLayer(inp.dataset.layer, inp.checked).then(ok => { if (!ok) toast(t('toast.imagery')); });
-    }));
-  },
+  globe: () => bindLayers(),
 };
+
+// ---------- animated precipitation ----------
+// Two looping layers: NASA IMERG satellite rain & snow (global, 30-minute
+// steps, a few hours behind) and NOAA radar (lower 48, minutes behind).
+// They only play on the Globe and Region screens; elsewhere the globe holds
+// the newest frame so it isn't redrawing every frame behind the forecast.
+const anim = {
+  playing: true,
+  sat: { frames: [], idx: -1, status: 'off' },   // status: off | loading | ready | error
+  radar: { frames: [], idx: -1, status: 'off' },
+};
+const ANIM_SOURCES = { sat: { fetch: fetchSatFrames, everyMin: 15 }, radar: { fetch: fetchRadarFrames, everyMin: 5 } };
+const animTimers = {};
+
+async function refreshFrames(name) {
+  const a = anim[name];
+  if (!a.frames.length) { a.status = 'loading'; updateLayersUI(); }
+  try {
+    const frames = await ANIM_SOURCES[name].fetch();
+    if (!state.layers[name]) return;
+    a.frames = frames;
+    a.status = 'ready';
+    updateLayersUI();
+    await globe?.setFrames(name, frames);
+  } catch {
+    if (!a.frames.length) { a.status = 'error'; updateLayersUI(); }
+  }
+}
+
+function setLayer(name, on) {
+  state.layers[name] = on;
+  store.set('layers', state.layers);
+  globe?.setLayer(name, on);
+  if (!(name in ANIM_SOURCES)) return;
+  clearInterval(animTimers[name]);
+  if (on) {
+    refreshFrames(name);
+    animTimers[name] = setInterval(() => refreshFrames(name), ANIM_SOURCES[name].everyMin * 60e3);
+  } else {
+    anim[name].status = 'off';
+  }
+}
+
+const animActive = () => state.view === 'globe' || state.view === 'region';
+function applyPlaying() {
+  globe?.setPlaying(anim.playing && animActive());
+  const btn = $('#anim-play');
+  if (btn) {
+    btn.innerHTML = anim.playing ? PAUSE_ICON : PLAY_ICON;
+    btn.setAttribute('aria-label', t(anim.playing ? 'anim.pause' : 'anim.play'));
+  }
+}
+const PLAY_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>';
+
+// Times are shown in the viewer's own clock (these are world-wide maps).
+function frameLabel(name) {
+  const a = anim[name];
+  if (a.status === 'error') return t('anim.unavailable');
+  const f = a.frames[a.idx];
+  if (!f) return t('anim.loading');
+  const time = new Intl.DateTimeFormat(locale(), { hour: 'numeric', minute: '2-digit', hour12: use12h() }).format(f.time);
+  const mins = Math.max(0, Math.round((Date.now() - f.time) / 60e3));
+  const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
+  return `${time} · ${mins < 90 ? rtf.format(-mins, 'minute') : rtf.format(-Math.round(mins / 60), 'hour')}`;
+}
+
+function onLayerFrame(name, idx) {
+  anim[name].idx = idx;
+  const label = $(`#anim-${name}-time`), range = $(`#anim-${name}-range`);
+  if (label) label.textContent = frameLabel(name);
+  if (range && document.activeElement !== range) range.value = idx;
+}
+
+function layersHTML() {
+  const sw = (key, label) => `<label class="switch"><input type="checkbox" data-layer="${key}" ${state.layers[key] ? 'checked' : ''}><span></span>${esc(label)}</label>`;
+  const rows = ['sat', 'radar'].filter(k => state.layers[k]).map(k => {
+    const a = anim[k];
+    return `<div class="anim-row">
+      <div class="anim-head"><b>${esc(t(`anim.${k}`))}</b><span id="anim-${k}-time">${esc(frameLabel(k))}</span></div>
+      <input type="range" id="anim-${k}-range" min="0" max="${Math.max(0, a.frames.length - 1)}" value="${Math.max(0, a.idx)}"
+        ${a.status === 'ready' ? '' : 'disabled'} aria-label="${esc(t(`anim.slider.${k}`))}">
+    </div>`;
+  }).join('');
+  return `<div id="layers">
+    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}</div>
+    ${rows ? `<div class="anim"><button type="button" class="anim-play" id="anim-play"></button><div class="anim-rows">${rows}</div></div>
+      <p class="fine anim-note">${esc(t('anim.note'))}</p>` : ''}
+  </div>`;
+}
+
+function bindLayers() {
+  document.querySelectorAll('#layers [data-layer]').forEach(inp => inp.addEventListener('change', () => {
+    blip('select');
+    setLayer(inp.dataset.layer, inp.checked);
+    updateLayersUI();
+  }));
+  $('#anim-play')?.addEventListener('click', () => {
+    blip('select');
+    anim.playing = !anim.playing;
+    applyPlaying();
+  });
+  for (const k of ['sat', 'radar']) {
+    $(`#anim-${k}-range`)?.addEventListener('input', e => {
+      anim.playing = false;
+      applyPlaying();
+      globe?.seek(k, +e.target.value);
+    });
+  }
+  applyPlaying();
+}
+
+// Redraw just the layer controls (keeps the rest of the panel and its focus).
+function updateLayersUI() {
+  const box = $('#layers');
+  if (!box) return;
+  const focusedId = document.activeElement?.closest('#layers') ? document.activeElement.id || document.activeElement.dataset.layer : null;
+  box.outerHTML = layersHTML();
+  bindLayers();
+  if (focusedId) (document.getElementById(focusedId) || $(`#layers [data-layer="${focusedId}"]`))?.focus();
+}
 
 // ---------- locations ----------
 function openLocation(loc, { asHome = false } = {}) {
@@ -770,6 +887,40 @@ function renderLangButton() {
   langItems.forEach(b => b.setAttribute('aria-checked', String(b.dataset.lang === getLang())));
 }
 
+// ---------- interface size (Settings) ----------
+// "2x" is the standard size; "1x" scales the windows down (styles.css) while
+// the globe and its labels stay full size, so more of the Earth shows.
+state.scale = store.get('scale', '2x');
+const scaleRadios = [...document.querySelectorAll('.scale-seg [data-scale]')];
+function applyScale() {
+  document.body.dataset.scale = state.scale;
+  scaleRadios.forEach(b => {
+    const on = b.dataset.scale === state.scale;
+    b.setAttribute('aria-checked', String(on));
+    b.setAttribute('aria-pressed', String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  if (state.started) requestAnimationFrame(() => { measureSafe(); globe?.refreshLabels(); });
+}
+function setScale(s) {
+  if (s === state.scale) return;
+  blip('select');
+  state.scale = s;
+  store.set('scale', s);
+  applyScale();
+}
+scaleRadios.forEach((b, i) => {
+  b.addEventListener('click', () => setScale(b.dataset.scale));
+  b.addEventListener('keydown', e => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    const next = scaleRadios[(i + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1) + scaleRadios.length) % scaleRadios.length];
+    setScale(next.dataset.scale);
+    next.focus();
+  });
+});
+applyScale();
+
 // ---------- explore mode (Globe & Region) ----------
 // Hides the bars, panel, dock and ticker so the Earth gets the whole screen,
 // which matters most on phones. A small pill brings everything back.
@@ -843,3 +994,5 @@ loadLocation();
 loadCities();
 globe?.setMode('intro');
 globe?.ready.then(() => document.body.classList.add('globe-ready'));
+// Restore the layers the visitor left switched on.
+for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night') setLayer(name, on);

@@ -519,3 +519,53 @@ body.explore .dock { transform: translate(-50%, 24px); }
   body[data-view="globe"] .switch { font-size: 12px; gap: 8px; }
   .explore-btn { padding: 8px 14px; font-size: 14px; }
 }
+
+/* ---------- precipitation playback ---------- */
+.anim { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: 18px; background: rgba(255, 255, 255, 0.7); box-shadow: inset 0 0 0 1px rgba(34, 50, 74, 0.06); }
+.anim-play {
+  flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(180deg, #5fd3ff, var(--wii) 50%, var(--wii-deep));
+  box-shadow: 0 4px 10px -4px rgba(26, 143, 208, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.55); transition: transform 0.15s;
+}
+.anim-play:hover { transform: scale(1.06); }
+.anim-rows { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.anim-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; }
+.anim-head b { font-weight: 800; }
+.anim-head span { color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anim-row input[type="range"] { width: 100%; margin: 2px 0 0; accent-color: var(--wii-deep); cursor: pointer; }
+.anim-row input[type="range"]:disabled { opacity: 0.4; cursor: default; }
+.anim-note { margin-top: 8px; }
+@media (max-width: 860px) {
+  .anim { margin-top: 8px; padding: 8px 10px; gap: 10px; }
+  .anim-play { width: 36px; height: 36px; }
+  body[data-view="globe"] .toggles, body[data-view="region"] .toggles { grid-template-columns: 1fr 1fr; gap: 8px; }
+  body[data-view="region"] .switch { font-size: 12px; gap: 8px; }
+  body[data-view="region"] .panel .fine { display: none; }
+}
+
+/* ---------- settings ---------- */
+.setting { padding: 4px 0 16px; border-bottom: 1px solid rgba(34, 50, 74, 0.1); }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.setting-row h3 { margin: 0 0 2px; }
+.setting-row .fine { margin: 0; max-width: 40ch; }
+.scale-seg { flex: none; min-width: 140px; }
+.scale-seg button { font-size: 15px; font-weight: 800; padding: 8px 18px; }
+.scale-seg button[aria-checked="true"] { background: #fff; color: var(--wii-deep); box-shadow: 0 2px 8px rgba(0, 30, 70, 0.15); }
+.about { padding-top: 4px; }
+.sheet .about-title { font-size: 17px; margin: 16px 0 6px; }
+.sheet h4 { font-size: 14px; margin: 14px 0 4px; }
+@media (max-width: 520px) {
+  .setting-row { flex-direction: column; align-items: stretch; gap: 10px; }
+}
+
+/* ---------- 1x interface size ---------- */
+/* Scales the windows only. The globe, its city labels and the pick card
+   stay full size, so the smaller UI simply reveals more of the Earth. */
+body[data-scale="1x"] .topbar,
+body[data-scale="1x"] .away,
+body[data-scale="1x"] .stage,
+body[data-scale="1x"] .dock,
+body[data-scale="1x"] .ticker,
+body[data-scale="1x"] .explore-exit,
+body[data-scale="1x"] .toast,
+body[data-scale="1x"] .sheet { zoom: 0.75; }

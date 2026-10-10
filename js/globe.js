@@ -3,12 +3,16 @@
 // Imagery (all public-domain NASA products, streamed from NASA GIBS):
 //   - Blue Marble: Next Generation  -> daytime surface
 //   - VIIRS Black Marble            -> night-side city lights
-//   - GPM IMERG precipitation rate  -> optional rain/snow overlay (latest day)
+//   - GPM IMERG precipitation rate  -> animated rain/snow overlay (30-minute steps)
+// plus NOAA's live U.S. radar mosaic (nowCOAST). Both animate via frames.js;
+// the frame lists come from data.js.
 //
 // The day/night terminator, stars and constellations are placed from the real
 // sun position and sidereal time, so the globe matches the actual sky "now".
 
 import * as THREE from 'three';
+import { FrameLayer } from './frames.js';
+import { RADAR_BOX } from './data.js';
 
 const GIBS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326&BBOX=-90,-180,90,180&STYLES=';
 const gibs = (layer, w, fmt = 'image/jpeg', extra = '') => `${GIBS}&LAYERS=${layer}&WIDTH=${w}&HEIGHT=${w / 2}&FORMAT=${encodeURIComponent(fmt)}${extra}`;
@@ -16,7 +20,6 @@ const gibs = (layer, w, fmt = 'image/jpeg', extra = '') => `${GIBS}&LAYERS=${lay
 export const IMAGERY = {
   day: gibs('BlueMarble_NextGeneration', 4096),
   night: gibs('VIIRS_Black_Marble', 4096),
-  precip: gibs('IMERG_Precipitation_Rate', 2048, 'image/png', '&TRANSPARENT=TRUE'),
 };
 
 const D2R = Math.PI / 180;
@@ -62,8 +65,9 @@ void main() {
 }`;
 
 const FRAG = `
-uniform sampler2D dayTex, nightTex, precipTex;
-uniform vec3 sunDir; uniform float uNight, uPrecip;
+uniform sampler2D dayTex, nightTex, satA, satB, radA, radB;
+uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix;
+uniform vec4 radBox; // west, south, east, north of the radar image
 varying vec2 vUv; varying vec3 vN; varying vec3 vW;
 void main() {
   vec3 n = normalize(vN);
@@ -77,8 +81,15 @@ void main() {
   vec3 col = mix(day * 0.95, mix(night, dayLit, lit), uNight);
   // Warm glow along the terminator.
   col += uNight * vec3(0.22, 0.09, 0.03) * exp(-pow((d - 0.02) * 9.0, 2.0)) * 0.5;
-  vec4 p = texture2D(precipTex, vUv);
-  col = mix(col, p.rgb, p.a * uPrecip * 0.85);
+  // Satellite rain covers the globe; radar only its own lat/lon box, where
+  // the live radar replaces the hours-old satellite estimate.
+  vec2 ll = vec2(vUv.x * 360.0 - 180.0, vUv.y * 180.0 - 90.0);
+  vec2 ruv = (ll - radBox.xy) / (radBox.zw - radBox.xy);
+  float inBox = step(0.0, ruv.x) * step(ruv.x, 1.0) * step(0.0, ruv.y) * step(ruv.y, 1.0);
+  vec4 s = mix(texture2D(satA, vUv), texture2D(satB, vUv), satMix);
+  col = mix(col, s.rgb, s.a * uSat * (1.0 - inBox * uRad) * 0.85);
+  vec4 r = mix(texture2D(radA, ruv), texture2D(radB, ruv), radMix);
+  col = mix(col, r.rgb, r.a * uRad * inBox * 0.9);
   // Atmospheric rim.
   vec3 v = normalize(cameraPosition - vW);
   float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
@@ -108,7 +119,7 @@ function blankTex(rgba) {
   return t;
 }
 
-export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
+export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
   // Set whenever the scene needs a redraw; see the main loop below.
   let dirty = true;
   const invalidate = () => { dirty = true; };
@@ -131,10 +142,11 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
   const uniforms = {
     dayTex: { value: blankTex([24, 52, 96, 255]) },
     nightTex: { value: blankTex([4, 8, 20, 255]) },
-    precipTex: { value: blankTex([0, 0, 0, 0]) },
     sunDir: { value: new THREE.Vector3(1, 0, 0) },
     uNight: { value: 1 },
-    uPrecip: { value: 0 },
+    uSat: { value: 0 }, satMix: { value: 0 }, satA: { value: null }, satB: { value: null },
+    uRad: { value: 0 }, radMix: { value: 0 }, radA: { value: null }, radB: { value: null },
+    radBox: { value: new THREE.Vector4(RADAR_BOX.w, RADAR_BOX.s, RADAR_BOX.e, RADAR_BOX.n) },
   };
   const loaded = {};
   function load(name, uniform) {
@@ -151,6 +163,20 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
     return loaded[name];
   }
   const ready = Promise.all([load('day', 'dayTex'), load('night', 'nightTex')]);
+
+  // Animated precipitation layers (frames.js). The app supplies the frame lists.
+  const anims = {
+    sat: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('sat', i, n, time) }),
+    radar: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar', i, n, time) }),
+  };
+  const ANIM_UNIFORMS = { sat: ['uSat', 'satA', 'satB', 'satMix'], radar: ['uRad', 'radA', 'radB', 'radMix'] };
+  function bindAnims() {
+    for (const [k, layer] of Object.entries(anims)) {
+      const [, a, b, m] = ANIM_UNIFORMS[k];
+      uniforms[a].value = layer.texA; uniforms[b].value = layer.texB; uniforms[m].value = layer.mix;
+    }
+  }
+  bindAnims();
 
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(1, 160, 80),
@@ -391,8 +417,14 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
   function frame(now) {
     requestAnimationFrame(frame);
     // Motion is time-based so speed is the same at 60, 120 or a choppy 40 fps.
-    const f = Math.min(now - lastNow, 100) / (1000 / 60);
+    const dt = Math.min(now - lastNow, 100);
+    const f = dt / (1000 / 60);
     lastNow = now;
+    // Visible precipitation layers advance their loops (and force a redraw while blending).
+    for (const [k, layer] of Object.entries(anims)) {
+      if (uniforms[ANIM_UNIFORMS[k][0]].value && layer.tick(dt)) dirty = true;
+    }
+    bindAnims();
     if (anim) {
       const t = Math.min(1, (now - anim.t0) / anim.ms), e = ease(t);
       // Pull out a little mid-flight so long hops arc over the globe.
@@ -471,12 +503,12 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, renderLabel, saf
     setLayer(name, on) {
       invalidate();
       if (name === 'night') uniforms.uNight.value = on ? 1 : 0;
-      if (name === 'precip') {
-        uniforms.uPrecip.value = on ? 1 : 0;
-        return on ? load('precip', 'precipTex') : Promise.resolve(true);
-      }
-      return Promise.resolve(true);
+      if (name in ANIM_UNIFORMS) uniforms[ANIM_UNIFORMS[name][0]].value = on ? 1 : 0;
     },
+    // frames: [{ time: Date, url }], oldest first.
+    setFrames(name, frames) { return anims[name].setFrames(frames); },
+    setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; },
+    seek(name, i) { return anims[name].seek(i); },
     sunInfo: () => astro(),
   };
 }

@@ -6,6 +6,7 @@
 //  - api.weather.gov  - official NWS forecast text + active alerts (U.S. only).
 //  - Copernicus CAMS  - European pollen forecast (EU Earth-observation service).
 //  - NASA GIBS        - Blue Marble, Black Marble and IMERG imagery (see globe.js).
+//  - NOAA nowCOAST    - live U.S. weather-radar mosaic.
 //  - GeoNames         - place-name search (via Open-Meteo's geocoder).
 
 import { NWS_COUNTRIES } from './cities.js';
@@ -125,4 +126,66 @@ export function dayRow(fc, i) {
 // "Now" in the forecast location's own clock, as a Date whose UTC fields hold local wall time.
 export function localNow(fc) {
   return new Date(Date.now() + fc.utc_offset_seconds * 1000);
+}
+
+// ---- Animated precipitation frames ----
+
+// Whole-second ISO times: GIBS rejects fractional seconds.
+const iso = t => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+// NASA GPM IMERG "early run" precipitation, a global satellite estimate every
+// 30 minutes. It reaches GIBS a few hours after the fact, so ask GIBS for the
+// newest time it has (DescribeDomains is a tiny reply, unlike GetCapabilities)
+// and step back from there.
+export async function fetchSatFrames(count = 16) {
+  const now = Date.now();
+  const domains = `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?SERVICE=WMTS&REQUEST=DescribeDomains&VERSION=1.0.0`
+    + `&LAYER=IMERG_Precipitation_Rate_30min&TILEMATRIXSET=2km&TIME=${iso(now - 2 * 864e5)}/${iso(now + 36e5)}`;
+  const res = await fetch(domains);
+  if (!res.ok) throw new Error(`GIBS ${res.status}`);
+  const domain = (await res.text()).match(/<Domain>([^<]+)<\/Domain>/)?.[1];
+  if (!domain) throw new Error('No IMERG times');
+  // Either "start/end/PT30M" intervals or plain times, comma-separated: the
+  // newest time is the end of the last entry.
+  const last = domain.split(',').pop().split('/');
+  const latest = new Date(last.length > 1 ? last[1] : last[0]).getTime();
+  return Array.from({ length: count }, (_, k) => {
+    const time = new Date(latest - (count - 1 - k) * 30 * 60e3);
+    return {
+      time,
+      url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326'
+        + `&LAYERS=IMERG_Precipitation_Rate_30min&STYLES=&BBOX=-90,-180,90,180&WIDTH=2048&HEIGHT=1024&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${iso(time)}`,
+    };
+  });
+}
+
+// NOAA's weather-radar mosaic for the lower 48 states (nowCOAST), refreshed
+// every few minutes. Its own capabilities document lists the available scan
+// times; keep the last two hours, thinned to roughly one frame per 10 minutes.
+const NOWCOAST = 'https://nowcoast.noaa.gov/geoserver/weather_radar/wms';
+export const RADAR_BOX = { w: -130, s: 20, e: -60, n: 55 }; // degrees, matches the 2:1 image below
+
+export async function fetchRadarFrames(minutes = 120, stepMin = 10) {
+  const res = await fetch(`${NOWCOAST}?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0`);
+  if (!res.ok) throw new Error(`nowCOAST ${res.status}`);
+  const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
+  const layer = [...doc.getElementsByTagName('Layer')]
+    .find(l => l.getElementsByTagName('Name')[0]?.textContent === 'base_reflectivity_mosaic');
+  const dim = layer && [...layer.getElementsByTagName('Dimension')].find(d => d.getAttribute('name') === 'time');
+  if (!dim) throw new Error('No radar times');
+  const times = dim.textContent.split(',').map(s => s.trim()).filter(Boolean)
+    .map(raw => ({ raw, t: Date.parse(raw) })).filter(x => !Number.isNaN(x.t)).sort((a, b) => a.t - b.t);
+  if (!times.length) throw new Error('No radar times');
+  const newest = times.at(-1).t;
+  const picked = [];
+  for (let i = times.length - 1; i >= 0 && times[i].t >= newest - minutes * 60e3; i--) {
+    if (!picked.length || picked.at(-1).t - times[i].t >= stepMin * 60e3 * 0.9) picked.push(times[i]);
+  }
+  const { w, s, e, n } = RADAR_BOX;
+  return picked.reverse().map(({ raw, t }) => ({
+    time: new Date(t),
+    // Use the scan time exactly as published: the server only matches exact values.
+    url: `${NOWCOAST}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=base_reflectivity_mosaic&STYLES=&CRS=EPSG:4326`
+      + `&BBOX=${s},${w},${n},${e}&WIDTH=2048&HEIGHT=1024&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${encodeURIComponent(raw)}`,
+  }));
 }

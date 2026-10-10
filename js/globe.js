@@ -1,8 +1,8 @@
 // The 3D Earth that sits behind every screen, like the original channel's globe.
 //
-// Imagery (all public-domain NASA products, streamed from NASA GIBS):
-//   - Blue Marble: Next Generation  -> daytime surface
-//   - VIIRS Black Marble            -> night-side city lights
+// Imagery (all public-domain NASA products):
+//   - Blue Marble: Next Generation  -> daytime surface (img/, see below)
+//   - VIIRS Black Marble            -> night-side city lights (img/)
 //   - GPM IMERG precipitation rate  -> animated rain/snow overlay (30-minute steps)
 // plus NOAA's live U.S. radar mosaic (nowCOAST). Both animate via frames.js;
 // the frame lists come from data.js.
@@ -14,12 +14,14 @@ import * as THREE from 'three';
 import { FrameLayer, FrameSync } from './frames.js';
 import { RADAR_BOX } from './data.js';
 
-const GIBS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326&BBOX=-90,-180,90,180&STYLES=';
-const gibs = (layer, w, fmt = 'image/jpeg', extra = '') => `${GIBS}&LAYERS=${layer}&WIDTH=${w}&HEIGHT=${w / 2}&FORMAT=${encodeURIComponent(fmt)}${extra}`;
-
+// The base imagery ships with the site (tools/fetch-earth.mjs). NASA GIBS
+// renders whole-Earth images on request, which took 4-5 seconds at this size;
+// static copies arrive at once. A small copy draws the globe first and the
+// sharp one replaces it (index.html preloads the small ones).
+const img = file => new URL(`../img/${file}`, import.meta.url).href;
 export const IMAGERY = {
-  day: gibs('BlueMarble_NextGeneration', 4096),
-  night: gibs('VIIRS_Black_Marble', 4096),
+  day: [img('earth-day-1024.jpg'), img('earth-day-4096.jpg')],
+  night: [img('earth-night-1024.jpg'), img('earth-night-4096.jpg')],
 };
 
 const D2R = Math.PI / 180;
@@ -107,9 +109,19 @@ float vnoise(vec2 p) {
   f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
+// Radar images carry a faint alpha floor (COVERAGE in recolour.js) wherever
+// their radars can see, even where it's dry. It's taken off before drawing,
+// and covered() reads it so a radar hides the layers beneath only where it
+// really covers rather than across its whole rectangle.
+const float COV = 4.0 / 255.0;
 vec4 overlay(sampler2D a, sampler2D b, vec2 uv, float m, float grain) {
   vec4 c = mix(smoothTex(a, uv), smoothTex(b, uv), m);
-  return vec4(c.rgb / max(c.a, 0.001), smoothstep(0.12 + grain, 0.6 + grain, c.a));
+  float rain = max(c.a - COV, 0.0) / (1.0 - COV);
+  return vec4(c.rgb / max(c.a, 0.001), smoothstep(0.12 + grain, 0.6 + grain, rain));
+}
+float covered(sampler2D a, sampler2D b, vec2 uv, float m, float inBox) {
+  if (inBox <= 0.0) return 0.0;
+  return smoothstep(COV * 0.3, COV * 0.85, mix(texture2D(a, uv).a, texture2D(b, uv).a, m)) * inBox;
 }
 void main() {
   vec3 n = normalize(vN);
@@ -131,7 +143,7 @@ void main() {
   col += uNight * vec3(0.22, 0.09, 0.03) * exp(-pow((d - 0.02) * 9.0, 2.0)) * 0.5;
   // Precipitation, back to front: satellite rain (global), live radar (its
   // own box), then the 12-hour forecast (a box around the viewed place).
-  // Each later layer replaces the ones beneath it inside its box.
+  // Each radar replaces the layers beneath it where its radars can see.
   // Radar areas on the same switch: North America, Germany, Europe (OPERA).
   vec2 ruv = boxUv(ll, radBox);
   float rIn = inside(ruv) * uRad;
@@ -143,11 +155,15 @@ void main() {
   float fIn = inside(fuv) * uFcst;
   // Edge roughness in degrees-space (~3 km and ~1 km features), faded in with zoom.
   float grain = uGrain > 0.0 ? (vnoise(ll * 36.0) * 0.65 + vnoise(ll * 110.0) * 0.35 - 0.5) * 0.3 * uGrain : 0.0;
+  // Where each radar actually sees (0 outside its range, even inside its box).
+  float rCov = covered(radA, radB, ruv, radMix, rIn);
+  float r2Cov = covered(rad2A, rad2B, r2uv, rad2Mix, r2In);
+  float r3Cov = covered(rad3A, rad3B, r3uv, rad3Mix, r3In);
   vec2 suv = boxUv(ll, satBox);
   float sIn = inside(suv) * uSat;
   if (sIn > 0.0) {
     vec4 o = overlay(satA, satB, suv, satMix, grain);
-    col = mix(col, o.rgb, o.a * sIn * (1.0 - rIn) * (1.0 - r2In) * (1.0 - r3In) * (1.0 - fIn) * 0.85);
+    col = mix(col, o.rgb, o.a * sIn * (1.0 - rCov) * (1.0 - r2Cov) * (1.0 - r3Cov) * (1.0 - fIn) * 0.85);
   }
   if (rIn > 0.0) {
     vec4 o = overlay(radA, radB, ruv, radMix, grain);
@@ -156,7 +172,7 @@ void main() {
   // Europe-wide OPERA under Germany's own radar (which wins where it's on).
   if (r3In > 0.0) {
     vec4 o = overlay(rad3A, rad3B, r3uv, rad3Mix, grain);
-    col = mix(col, o.rgb, o.a * r3In * (1.0 - r2In) * (1.0 - fIn) * 0.9);
+    col = mix(col, o.rgb, o.a * r3In * (1.0 - r2Cov) * (1.0 - fIn) * 0.9);
   }
   if (r2In > 0.0) {
     vec4 o = overlay(rad2A, rad2B, r2uv, rad2Mix, grain);
@@ -234,21 +250,25 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     uGrain: { value: 0 },
     detailBox: { value: new THREE.Vector4(0, 0, 1, 1) },
   };
-  const loaded = {};
-  function load(name, uniform) {
-    if (loaded[name]) return loaded[name];
-    loaded[name] = new Promise(resolve => {
-      loader.load(IMAGERY[name], tex => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = aniso;
-        uniforms[uniform].value = tex;
-        invalidate();
-        resolve(true);
-      }, undefined, () => resolve(false));
-    });
-    return loaded[name];
+  function load(url, uniform) {
+    return new Promise(resolve => loader.load(url, tex => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = aniso;
+      uniforms[uniform].value.dispose();
+      uniforms[uniform].value = tex;
+      invalidate();
+      resolve(true);
+    }, undefined, () => resolve(false)));
   }
-  const ready = Promise.all([load('day', 'dayTex'), load('night', 'nightTex')]);
+  // The globe is shown as soon as the small day image is in. The sharp
+  // copies start only after both small ones, so they never delay that.
+  const smallDay = load(IMAGERY.day[0], 'dayTex');
+  const smallNight = load(IMAGERY.night[0], 'nightTex');
+  const ready = smallDay;
+  Promise.all([smallDay, smallNight]).then(() => {
+    load(IMAGERY.day[1], 'dayTex');
+    load(IMAGERY.night[1], 'nightTex');
+  });
 
   // Animated precipitation layers (frames.js). The app supplies the frame lists.
   // Animation frames waiting to go to the GPU, sent at most one per drawn

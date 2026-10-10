@@ -152,7 +152,9 @@ export class FrameLayer {
 
   // A frame is a ready image (drawn in the page), one URL, or several URLs
   // stacked into one picture (e.g. radar rain + snow). An optional
-  // transform(canvas) recolours it (e.g. DWD's palette to ours).
+  // transform(canvas) recolours it (e.g. DWD's palette to ours). With
+  // `coverage` (an opacity), the first URL is a map of where the radars see,
+  // drawn beneath the rest at that opacity (see COVERAGE in recolour.js).
   async decode(i) {
     const f = this.frames[i];
     if (f.image) return (await toBitmap(f.image)) ?? f.image;
@@ -164,9 +166,17 @@ export class FrameLayer {
     const canvas = document.createElement('canvas');
     canvas.width = first.width; canvas.height = first.height;
     const ctx = canvas.getContext('2d', { willReadFrequently: !!f.transform });
-    for (const img of imgs) if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const [under, layers] = f.coverage ? [imgs[0], imgs.slice(1)] : [null, imgs];
+    for (const img of layers) if (img) ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (under) {
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.globalAlpha = f.coverage;
+      ctx.drawImage(under, 0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
     for (const img of imgs) if (isBitmap(img)) img.close();
-    f.transform?.(ctx, canvas.width, canvas.height);
+    f.transform?.(ctx, canvas.width, canvas.height, f.box);
     return (await toBitmap(canvas)) ?? canvas;
   }
 

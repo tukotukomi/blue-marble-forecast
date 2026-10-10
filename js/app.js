@@ -918,7 +918,7 @@ function updateHiRes(name) {
   if (W / (box.e - box.w) < fullPxPerDeg * 1.5) return revert();
   hiRes[name] = box;
   globe.setFrames(name, a.frames.map(f => (f.makeFor ? { time: f.time, ...f.makeFor(box, W, H) }
-    : { time: f.time, url: f.urlFor(box, W, H), transform: f.transform })), box, { keepIndex: true });
+    : { time: f.time, url: f.urlFor(box, W, H), transform: f.transform, coverage: f.coverage, box })), box, { keepIndex: true });
 }
 
 // ---------- locations ----------
@@ -1304,10 +1304,16 @@ initGamepad({
 
 await setLang(detectLang());
 applyLanguage();
+// Loading order: the globe's first picture comes first (index.html preloads
+// it). Your forecast and the ticker are small and start straight away; the
+// heavier extras (map places, borders, rain and radar frames) wait until the
+// globe is showing so they don't compete with it for the connection.
 loadLocation();
 loadCities();
-loadPlaces();
 globe?.setMode('intro');
-globe?.ready.then(() => document.body.classList.add('globe-ready'));
-// Restore the layers the visitor left switched on.
-for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night') setLayer(name, on, false);
+const globeShown = (globe?.ready ?? Promise.resolve()).then(() => document.body.classList.add('globe-ready'));
+globeShown.then(() => {
+  loadPlaces();
+  // Restore the layers the visitor left switched on.
+  for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night') setLayer(name, on, false);
+});

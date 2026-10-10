@@ -31,7 +31,7 @@ h1, h2, h3 { margin: 0; }
 
 /* ---------- globe & labels ---------- */
 .globe { position: fixed; inset: 0; }
-.globe canvas { width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 1.4s ease; touch-action: none; }
+.globe canvas { width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 0.8s ease; touch-action: none; }
 body.globe-ready .globe canvas { opacity: 1; }
 .globe[data-mode="globe"] canvas, .globe[data-mode="region"] canvas { cursor: grab; }
 .globe[data-mode="globe"] canvas:active, .globe[data-mode="region"] canvas:active { cursor: grabbing; }

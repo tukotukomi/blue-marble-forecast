@@ -39,6 +39,7 @@ const STOPS = [
   [27, [150, 215, 60, 0.86]], [32, [250, 220, 40, 0.88]], [38, [250, 150, 20, 0.9]], [44, [250, 100, 20, 0.92]],
   [50, [230, 30, 40, 0.95]], [55, [200, 30, 110, 0.97]], [60, [200, 40, 200, 1]], [65, [235, 140, 255, 1]],
 ];
+const COV = 4; // = COVERAGE * 255 in recolour.js (a worker can't share the import cheaply)
 const LUT = new Uint8ClampedArray(256 * 4); // dBZ -32..95.5 in 0.5 steps
 for (let i = 0; i < 256; i++) {
   const dbz = -32 + i * 0.5;
@@ -109,10 +110,15 @@ async function render({ url, box, W, H }) {
         const cc = Math.floor(c) - win[0], rr = Math.floor(r) - win[1];
         if (cc < 0 || rr < 0 || cc >= ww || rr >= wh) continue;
         const v = data[rr * ww + cc];
-        if (!(v > 7) || v > 95) continue; // NaN, no echo, or fill values
-        const li = Math.min(255, Math.round((v + 32) * 2)) * 4;
+        if (v < -1000 || v > 95) continue; // no data (-9999000: outside radar range) or fill values
         const o = (y * W + x) * 4;
-        out.data[o] = LUT[li]; out.data[o + 1] = LUT[li + 1]; out.data[o + 2] = LUT[li + 2]; out.data[o + 3] = LUT[li + 3];
+        // Covered by a radar: at least the faint coverage alpha (COVERAGE in
+        // recolour.js), even with no echo (NaN, "undetect") or below 7 dBZ.
+        out.data[o + 3] = COV;
+        if (!(v > 7)) continue;
+        const li = Math.min(255, Math.round((v + 32) * 2)) * 4;
+        out.data[o] = LUT[li]; out.data[o + 1] = LUT[li + 1]; out.data[o + 2] = LUT[li + 2];
+        out.data[o + 3] = Math.max(COV, LUT[li + 3]);
       }
     }
   }

@@ -18,9 +18,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <!-- Start the globe's first picture and its 3D library before any script
+       runs: the small Earth images (js/globe.js swaps in sharp ones) and
+       three.js, which would otherwise only be found two imports deep. -->
+  <link rel="preload" as="image" href="img/earth-day-1024.jpg" crossorigin>
+  <link rel="preload" as="image" href="img/earth-night-1024.jpg" crossorigin>
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js" crossorigin>
   <script type="importmap">
     { "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
     } }
   </script>

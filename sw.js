@@ -2,14 +2,14 @@
 //
 // - App files (this folder): network first, so a new deploy shows up right
 //   away; the cached copy is only used when offline.
-// - Files that never change: NASA's two whole-globe textures (several MB),
-//   the version-pinned three.js library and the web fonts. Cache first, so
+// - Files that never change: NASA's whole-globe images (img/earth-*), the
+//   version-pinned three.js library and the web fonts. Cache first, so
 //   the globe appears instantly on launch and the app can start offline.
 // - Everything else (forecasts, radar, satellite frames): straight to the
 //   network and never cached, so weather is never stale.
 
 const CACHE = 'blue-marble-forecast-v1';
-const IMMUTABLE = /BlueMarble_NextGeneration&WIDTH=4096|VIIRS_Black_Marble&WIDTH=4096|cdn\.jsdelivr\.net\/npm\/(three|geotiff)@|fonts\.(googleapis|gstatic)\.com/;
+const IMMUTABLE = /\/img\/earth-[a-z]+-\d+\.jpg$|cdn\.jsdelivr\.net\/npm\/(three|geotiff)@|fonts\.(googleapis|gstatic)\.com/;
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => {
@@ -24,8 +24,8 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   const appFile = url.origin === location.origin && url.pathname.startsWith(new URL('./', location).pathname);
-  if (appFile) e.respondWith(networkFirst(req));
-  else if (IMMUTABLE.test(req.url)) e.respondWith(cacheFirst(req));
+  if (IMMUTABLE.test(req.url)) e.respondWith(cacheFirst(req));
+  else if (appFile) e.respondWith(networkFirst(req));
 });
 
 async function networkFirst(req) {

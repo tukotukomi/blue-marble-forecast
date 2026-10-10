@@ -34,6 +34,7 @@ js/                       app.js (screens), globe.js (three.js Earth), frames.js
 strings/                  en.json, es.json, zh-cn.json (every UI string)
 data/places.json          map cities, built by tools/build-places.mjs from Natural Earth
 data/borders.json         country and state lines, built by tools/build-borders.mjs from Natural Earth
+img/earth-*.jpg           NASA Blue Marble / Black Marble globe images, fetched by tools/fetch-earth.mjs
 tools/opera-relay/        the Cloudflare Worker that relays OPERA radar files (see below)
 sw.js, manifest.webmanifest, icons/   home-screen app
 ```

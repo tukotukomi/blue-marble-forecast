@@ -10,7 +10,7 @@
 //  - GeoNames         - place-name search (via Open-Meteo's geocoder).
 
 import { NWS_COUNTRIES } from './cities.js';
-import { recolourDwdRadar } from './recolour.js';
+import { COVERAGE, coverAll, recolourDwdRadar } from './recolour.js';
 
 const OM = 'https://api.open-meteo.com/v1/forecast';
 const CACHE_MIN = 20;
@@ -188,7 +188,7 @@ export async function fetchRadarFrames(minutes = 120, stepMin = 10) {
     // Use the scan time exactly as published: the server only matches exact values.
     const urlFor = ({ w, s, e, n }, W, H) => `${NOWCOAST}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=base_reflectivity_mosaic&STYLES=&CRS=EPSG:4326`
       + `&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${encodeURIComponent(raw)}`;
-    return { time: new Date(t), urlFor, url: urlFor(RADAR_BOX, 2048, 1024) };
+    return { time: new Date(t), urlFor, url: urlFor(RADAR_BOX, 2048, 1024), transform: coverAll };
   });
   return { frames, box: RADAR_BOX, native: 0.035 }; // mosaic cells: ~4 km
 }
@@ -225,10 +225,14 @@ async function fetchEcccRadar(minutes = 120, stepMin = 12) {
   const count = Math.floor(minutes / stepMin) + 1;
   const frames = Array.from({ length: count }, (_, k) => {
     const time = new Date(end - (count - 1 - k) * stepMin * 60e3);
-    const urlFor = ({ w, s, e, n }, W, H) => ['RADAR_1KM_RRAI', 'RADAR_1KM_RSNO'].map(layer =>
-      `${GEOMET}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=${layer}&STYLES=&CRS=EPSG:4326`
+    // First the radars' coverage at that time (filled at half opacity), then
+    // rain and snow; the coverage is drawn faintly underneath (frames.js).
+    const urlFor = ({ w, s, e, n }, W, H) => [
+      ['RADAR_COVERAGE_RRAI', 'RADAR_COVERAGE_BLUE-FILL'], ['RADAR_1KM_RRAI', ''], ['RADAR_1KM_RSNO', ''],
+    ].map(([layer, style]) =>
+      `${GEOMET}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=${layer}&STYLES=${style}&CRS=EPSG:4326`
       + `&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${iso(time)}`);
-    return { time, urlFor, url: urlFor(NA_RADAR_BOX, 3072, 1284) };
+    return { time, urlFor, url: urlFor(NA_RADAR_BOX, 3072, 1284), coverage: COVERAGE / (128 / 255) };
   });
   return { frames, box: NA_RADAR_BOX, native: 0.01 }; // 1 km mosaic
 }
@@ -256,7 +260,7 @@ export async function fetchGermanRadar(minutes = 120, stepMin = 10) {
     const time = new Date(end - (count - 1 - k) * stepMin * 60e3);
     const urlFor = ({ w, s, e, n }, W, H) => `${DWD_RADAR}/wms?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=Radar_wn-analysis_1x1km_ger`
       + `&STYLES=&CRS=EPSG:4326&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${time.toISOString()}`;
-    return { time, urlFor, url: urlFor(DE_RADAR_BOX, 1600, 976), transform: recolourDwdRadar };
+    return { time, urlFor, url: urlFor(DE_RADAR_BOX, 1600, 976), transform: recolourDwdRadar, box: DE_RADAR_BOX };
   });
   return { frames, box: DE_RADAR_BOX, native: 0.0108 }; // 1 km composite
 }

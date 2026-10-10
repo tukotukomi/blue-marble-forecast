@@ -73,6 +73,10 @@ export class FrameLayer {
     const urls = frames.flatMap(urlsOf);
     if (!keepIndex) this.baseUrls = new Set(urls);
     const keep = new Set([...urls, ...(this.baseUrls ?? [])]);
+    // Frames made in the page (OPERA) carry a make() that produces their blob.
+    this.makers ??= new Map();
+    for (const f of frames) if (f.make) this.makers.set(f.url, f.make);
+    for (const url of this.makers.keys()) if (!keep.has(url)) this.makers.delete(url);
     for (const [url, p] of this.blobs) {
       if (!keep.has(url)) { p.then(u => u && URL.revokeObjectURL(u)); this.blobs.delete(url); }
     }
@@ -87,7 +91,9 @@ export class FrameLayer {
 
   blob(url) {
     if (!this.blobs.has(url)) {
-      this.blobs.set(url, fetch(url).then(r => (r.ok ? r.blob() : null)).then(b => (b ? URL.createObjectURL(b) : null)).catch(() => null));
+      const make = this.makers?.get(url);
+      const blob = make ? make() : fetch(url).then(r => (r.ok ? r.blob() : null));
+      this.blobs.set(url, blob.then(b => (b ? URL.createObjectURL(b) : null)).catch(() => null));
     }
     return this.blobs.get(url);
   }

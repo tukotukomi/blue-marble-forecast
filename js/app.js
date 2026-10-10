@@ -3,6 +3,7 @@ import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js'
 import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchGermanRadar, fetchPlaces } from './data.js';
 import { fetchForecastRain } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
+import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createGlobe } from './globe.js';
 import { setMusic, blip, unlock } from './audio.js';
 import { LANGUAGES, detectLang, setLang, getLang, locale, searchLang, t, applyStatic } from './i18n.js';
@@ -677,25 +678,29 @@ const anim = {
   sat: { frames: [], idx: -1, status: 'off' },   // status: off | loading | ready | error
   radar: { frames: [], idx: -1, status: 'off' },
   radar2: { frames: [], idx: -1, status: 'off' },
+  radar3: { frames: [], idx: -1, status: 'off' },
   fcst: { frames: [], idx: -1, status: 'off' },
 };
-const ANIM_KEYS = ['sat', 'radar', 'radar2', 'fcst'];
+const ANIM_KEYS = ['sat', 'radar', 'radar3', 'radar2', 'fcst'];
 // Layers that share another layer's switch: "High resolution radar" drives
 // both North America (radar) and Germany (radar2).
-const SWITCH_OF = { radar2: 'radar' };
+const SWITCH_OF = { radar2: 'radar', radar3: 'radar' };
 // Individual services (Settings > Data sources). Radar areas are separate
 // animated layers; forecast sources are choices inside the one forecast layer.
-const SOURCE_OF_LAYER = { radar: 'radarNA', radar2: 'radarDE' };
+const SOURCE_OF_LAYER = { radar: 'radarNA', radar2: 'radarDE', radar3: 'radarEU' };
 const DATA_SOURCES = [
-  { group: 'globe.radar', items: ['radarNA', 'radarDE'] },
+  // Europe (OPERA) needs its relay; it's left out until one is configured.
+  { group: 'globe.radar', items: ['radarNA', ...(OPERA_RELAY ? ['radarEU'] : []), 'radarDE'] },
   { group: 'globe.fcst', items: ['hrrr', 'iconEu', 'gfs'] },
 ];
-state.sources = { radarNA: true, radarDE: true, hrrr: true, iconEu: true, gfs: true, ...store.get('sources', {}) };
+state.sources = { radarNA: true, radarEU: true, radarDE: true, hrrr: true, iconEu: true, gfs: true, ...store.get('sources', {}) };
+if (!OPERA_RELAY) state.sources.radarEU = false;
 const isOn = k => !!state.layers[SWITCH_OF[k] ?? k] && (!SOURCE_OF_LAYER[k] || !!state.sources[SOURCE_OF_LAYER[k]]);
 const ANIM_SOURCES = {
   sat: { fetch: fetchSatFrames, everyMin: 15 },
   radar: { fetch: fetchHiResRadar, everyMin: 6 },
   radar2: { fetch: fetchGermanRadar, everyMin: 5 },
+  radar3: { fetch: fetchOperaRadar, everyMin: 10 },
   fcst: { fetch: () => fetchForecastRain(state.viewing.lat, state.viewing.lon, state.sources), everyMin: 30 },
 };
 const animTimers = {};
@@ -853,7 +858,7 @@ function onViewSettled(view) {
 const wrapLon = x => ((((x % 360) + 540) % 360) - 180);
 function updateHiRes(name) {
   const a = anim[name];
-  if (!globe || !isOn(name) || a.status !== 'ready' || !a.native || !a.frames[0]?.urlFor) return;
+  if (!globe || !isOn(name) || a.status !== 'ready' || !a.native || !(a.frames[0]?.urlFor || a.frames[0]?.makeFor)) return;
   const full = a.box, view = settledView;
   const revert = () => {
     if (!hiRes[name]) return;
@@ -884,7 +889,8 @@ function updateHiRes(name) {
   const fullPxPerDeg = 2048 / (full.e - full.w);
   if (W / (box.e - box.w) < fullPxPerDeg * 1.5) return revert();
   hiRes[name] = box;
-  globe.setFrames(name, a.frames.map(f => ({ time: f.time, url: f.urlFor(box, W, H), transform: f.transform })), box, { keepIndex: true });
+  globe.setFrames(name, a.frames.map(f => (f.makeFor ? { time: f.time, ...f.makeFor(box, W, H) }
+    : { time: f.time, url: f.urlFor(box, W, H), transform: f.transform })), box, { keepIndex: true });
 }
 
 // ---------- locations ----------

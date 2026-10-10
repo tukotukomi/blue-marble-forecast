@@ -1,0 +1,5 @@
+# Cloudflare Worker config for the OPERA relay (see worker.js).
+# Deploy from this folder:  npx wrangler login   then   npx wrangler deploy
+name = "opera-relay"
+main = "worker.js"
+compatibility_date = "2024-09-23"

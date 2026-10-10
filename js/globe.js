@@ -65,11 +65,11 @@ void main() {
 }`;
 
 const FRAG = `
-uniform sampler2D dayTex, nightTex, satA, satB, radA, radB, rad2A, rad2B, fcstA, fcstB, detailDay, detailNight;
-uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uRad2, rad2Mix, uFcst, fcstMix, uDetail, uGrain;
+uniform sampler2D dayTex, nightTex, satA, satB, radA, radB, rad2A, rad2B, rad3A, rad3B, fcstA, fcstB, detailDay, detailNight;
+uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uRad2, rad2Mix, uRad3, rad3Mix, uFcst, fcstMix, uDetail, uGrain;
 // Image patches as (west, south, width, height) in degrees. West may be any
 // longitude, so a patch can straddle the date line.
-uniform vec4 satBox, radBox, rad2Box, fcstBox, detailBox;
+uniform vec4 satBox, radBox, rad2Box, rad3Box, fcstBox, detailBox;
 varying vec2 vUv; varying vec3 vN; varying vec3 vW;
 vec2 boxUv(vec2 ll, vec4 box) {
   return vec2(mod(ll.x - box.x + 360.0, 360.0) / box.z, (ll.y - box.y) / box.w);
@@ -132,11 +132,13 @@ void main() {
   // Precipitation, back to front: satellite rain (global), live radar (its
   // own box), then the 12-hour forecast (a box around the viewed place).
   // Each later layer replaces the ones beneath it inside its box.
-  // Two radar areas (North America, Germany) on the same switch.
+  // Radar areas on the same switch: North America, Germany, Europe (OPERA).
   vec2 ruv = boxUv(ll, radBox);
   float rIn = inside(ruv) * uRad;
   vec2 r2uv = boxUv(ll, rad2Box);
   float r2In = inside(r2uv) * uRad2;
+  vec2 r3uv = boxUv(ll, rad3Box);
+  float r3In = inside(r3uv) * uRad3;
   vec2 fuv = boxUv(ll, fcstBox);
   float fIn = inside(fuv) * uFcst;
   // Edge roughness in degrees-space (~3 km and ~1 km features), faded in with zoom.
@@ -145,11 +147,16 @@ void main() {
   float sIn = inside(suv) * uSat;
   if (sIn > 0.0) {
     vec4 o = overlay(satA, satB, suv, satMix, grain);
-    col = mix(col, o.rgb, o.a * sIn * (1.0 - rIn) * (1.0 - r2In) * (1.0 - fIn) * 0.85);
+    col = mix(col, o.rgb, o.a * sIn * (1.0 - rIn) * (1.0 - r2In) * (1.0 - r3In) * (1.0 - fIn) * 0.85);
   }
   if (rIn > 0.0) {
     vec4 o = overlay(radA, radB, ruv, radMix, grain);
     col = mix(col, o.rgb, o.a * rIn * (1.0 - fIn) * 0.9);
+  }
+  // Europe-wide OPERA under Germany's own radar (which wins where it's on).
+  if (r3In > 0.0) {
+    vec4 o = overlay(rad3A, rad3B, r3uv, rad3Mix, grain);
+    col = mix(col, o.rgb, o.a * r3In * (1.0 - r2In) * (1.0 - fIn) * 0.9);
   }
   if (r2In > 0.0) {
     vec4 o = overlay(rad2A, rad2B, r2uv, rad2Mix, grain);
@@ -219,6 +226,8 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     radBox: { value: new THREE.Vector4(RADAR_BOX.w, RADAR_BOX.s, RADAR_BOX.e - RADAR_BOX.w, RADAR_BOX.n - RADAR_BOX.s) },
     uRad2: { value: 0 }, rad2Mix: { value: 0 }, rad2A: { value: null }, rad2B: { value: null },
     rad2Box: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uRad3: { value: 0 }, rad3Mix: { value: 0 }, rad3A: { value: null }, rad3B: { value: null },
+    rad3Box: { value: new THREE.Vector4(0, 0, 1, 1) },
     uFcst: { value: 0 }, fcstMix: { value: 0 }, fcstA: { value: null }, fcstB: { value: null },
     fcstBox: { value: new THREE.Vector4(0, 0, 1, 1) },
     uDetail: { value: 0 }, detailDay: { value: null }, detailNight: { value: null },
@@ -246,19 +255,21 @@ export function createGlobe(host, { labelLayer, onPick, onDrag, onLayerFrame, on
     sat: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('sat', i, n, time) }),
     radar: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar', i, n, time) }),
     radar2: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar2', i, n, time) }),
+    radar3: new FrameLayer({ onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('radar3', i, n, time) }),
     fcst: new FrameLayer({ forward: true, onChange: invalidate, onFrame: (i, n, time) => onLayerFrame?.('fcst', i, n, time) }),
   };
   const ANIM_UNIFORMS = {
     sat: ['uSat', 'satA', 'satB', 'satMix'],
     radar: ['uRad', 'radA', 'radB', 'radMix'],
     radar2: ['uRad2', 'rad2A', 'rad2B', 'rad2Mix'],
+    radar3: ['uRad3', 'rad3A', 'rad3B', 'rad3Mix'],
     fcst: ['uFcst', 'fcstA', 'fcstB', 'fcstMix'],
   };
   function bindAnims() {
     for (const [k, layer] of Object.entries(anims)) {
       const [, a, b, m] = ANIM_UNIFORMS[k];
       uniforms[a].value = layer.texA; uniforms[b].value = layer.texB; uniforms[m].value = layer.mix;
-      const box = layer.box, u = uniforms[{ sat: 'satBox', radar: 'radBox', radar2: 'rad2Box', fcst: 'fcstBox' }[k]];
+      const box = layer.box, u = uniforms[{ sat: 'satBox', radar: 'radBox', radar2: 'rad2Box', radar3: 'rad3Box', fcst: 'fcstBox' }[k]];
       if (box) u.value.set(box.w, box.s, box.e - box.w, box.n - box.s);
     }
   }

@@ -62,8 +62,10 @@ const state = {
   saved: store.get('saved', []), // My Places, in the order they were starred
   started: false,
 };
-// Open where the visitor was looking last time (their home on a first visit).
-state.viewing = store.get('viewing', null) || state.home;
+// Every visit starts at home. (Earlier versions saved the last place viewed;
+// that copy is cleared.)
+state.viewing = state.home;
+try { localStorage.removeItem('fc.viewing'); } catch { /* storage unavailable */ }
 
 // Dock order; the app still opens on 'now' (see start()).
 const VIEWS = ['places', 'globe', 'now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry'];
@@ -952,7 +954,6 @@ function updateHiRes(name) {
 // ---------- locations ----------
 function openLocation(loc, { asHome = false } = {}) {
   state.viewing = { ...loc };
-  store.set('viewing', state.viewing);
   setCollapsed(false);
   if (asHome) { state.home = { ...loc }; store.set('home', state.home); }
   state.fc = null;

@@ -61,6 +61,7 @@ const state = {
   view: 'now',
   fc: null, nws: null, cities: [],
   saved: store.get('saved', []), // My Places, in the order they were starred
+  animOpen: store.get('animOpen', false), // Globe screen: timers expanded
   started: false,
 };
 // Every visit starts at home. (Earlier versions saved the last place viewed;
@@ -854,6 +855,7 @@ function onLayerFrame(name, idx) {
   const label = $(`#anim-${name}-time`), range = $(`#anim-${name}-range`);
   if (label) label.textContent = frameLabel(name);
   if (range && document.activeElement !== range) range.value = idx;
+  if (name === summaryKey()) $('#anim-summary-time')?.replaceChildren(frameLabel(name));
   renderTimeline();
 }
 
@@ -898,12 +900,23 @@ function layersHTML() {
         ${a.status === 'ready' ? '' : 'disabled'} aria-label="${esc(t(`anim.slider.${k}`))}">
     </div>`;
   }).join('');
+  // Collapsed (the default), the timers fold into one line: how many are
+  // playing and the time on screen, which keeps updating (onLayerFrame).
+  const on = ANIM_KEYS.filter(isOn), open = state.animOpen;
+  const key = summaryKey();
+  const summary = `<div class="anim-summary"><b>${esc(t('anim.summary', { n: on.length }))}</b><span id="anim-summary-time">${esc(key ? frameLabel(key) : '')}</span></div>`;
   return `<div id="layers">
     <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('borders', t('globe.borders'))}${sw('fcst', t('globe.fcst'))}</div>
-    ${rows ? `<div class="anim"><button type="button" class="anim-play" id="anim-play"></button><div class="anim-rows">${rows}</div></div>
-      <p class="fine anim-note">${esc(t('anim.note'))}</p>` : ''}
+    ${rows ? `<div class="anim${open ? '' : ' collapsed'}"><button type="button" class="anim-play" id="anim-play"></button>
+      <div class="anim-rows">${open ? rows : summary}</div>
+      <button type="button" class="anim-toggle" id="anim-toggle" aria-expanded="${open}" aria-label="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}" title="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+      ${open ? `<p class="fine anim-note">${esc(t('anim.note'))}</p>` : ''}` : ''}
   </div>`;
 }
+
+// Whose time the collapsed line shows: the first radar that's on (they share
+// one clock), else satellite rain, else the forecast.
+const summaryKey = () => ['radar', 'radar3', 'radar2', 'sat', 'fcst'].find(isOn);
 
 function bindLayers() {
   document.querySelectorAll('#layers [data-layer]').forEach(inp => inp.addEventListener('change', () => {
@@ -911,6 +924,12 @@ function bindLayers() {
     setLayer(inp.dataset.layer, inp.checked);
     updateLayersUI();
   }));
+  $('#anim-toggle')?.addEventListener('click', () => {
+    blip('select');
+    state.animOpen = !state.animOpen;
+    store.set('animOpen', state.animOpen);
+    updateLayersUI();
+  });
   $('#anim-play')?.addEventListener('click', () => {
     blip('select');
     anim.playing = !anim.playing;

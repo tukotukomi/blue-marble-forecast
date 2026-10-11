@@ -591,6 +591,17 @@ body.explore .dock { transform: translate(-50%, 24px); }
 .anim-row input[type="range"] { width: 100%; margin: 2px 0 0; accent-color: var(--wii-deep); cursor: pointer; }
 .anim-row input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .anim-note { margin-top: 8px; }
+/* Expand/collapse for the timers; collapsed it's a single summary line. */
+.anim-toggle {
+  flex: none; align-self: flex-start; width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  color: var(--ink-soft); background: rgba(34, 50, 74, 0.06); transition: background 0.15s, transform 0.2s;
+}
+.anim-toggle:hover { background: rgba(52, 190, 237, 0.14); color: var(--wii-deep); }
+.anim-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.anim.collapsed .anim-toggle { align-self: center; }
+.anim-summary { display: flex; flex-direction: column; gap: 1px; font-size: 12px; min-width: 0; }
+.anim-summary b { font-weight: 800; }
+.anim-summary span { color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 860px) {
   .anim { margin-top: 8px; padding: 8px 10px; gap: 10px; }
   .anim-play { width: 36px; height: 36px; }

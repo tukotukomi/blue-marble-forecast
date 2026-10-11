@@ -88,6 +88,8 @@
   "calm.open": "Abrir Vista Calma",
   "calm.title": "Vista Calma",
   "calm.back": "Volver al globo",
+  "calm.prev": "Lugar anterior",
+  "calm.next": "Lugar siguiente",
   "calm.hourly": "Pronóstico por horas",
   "calm.daily": "Pronóstico de {n} días",
   "calm.now": "Ahora",

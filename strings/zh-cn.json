@@ -88,6 +88,8 @@
   "calm.open": "打开宁静视图",
   "calm.title": "宁静视图",
   "calm.back": "返回地球",
+  "calm.prev": "上一个地点",
+  "calm.next": "下一个地点",
   "calm.hourly": "逐小时预报",
   "calm.daily": "{n} 天预报",
   "calm.now": "现在",

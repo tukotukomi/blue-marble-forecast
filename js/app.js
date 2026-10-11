@@ -325,8 +325,10 @@ function renderTop() {
   $('#loc-sub').textContent = placeLine(v);
   $('#units').textContent = `°${state.units}`;
   $('#units').setAttribute('aria-label', t('top.units', { unit: t(state.units === 'F' ? 'units.fahrenheit' : 'units.celsius') }));
-  $('#music').classList.toggle('off', !state.music);
-  $('#music').setAttribute('aria-pressed', String(state.music));
+  for (const b of [$('#music'), $('#calm-music')]) {
+    b.classList.toggle('off', !state.music);
+    b.setAttribute('aria-pressed', String(state.music));
+  }
   const away = !sameLoc(v, state.home);
   $('#away').hidden = !away;
   if (away) $('#away-text').innerHTML = esc(t('away.text', { home: '\u0000' })).replace('\u0000', `<b>${esc(placeName(state.home))}</b>`);
@@ -1073,13 +1075,19 @@ async function loadSavedWeather() {
 // A flat, quiet forecast for the place on screen over an animated sky that
 // matches its weather (calm.js), in place of the globe. Opened from My
 // Places; "Back to Globe", Escape or the phone's back gesture return.
-const calm = { el: $('#calm'), sky: null, open: false, weather: '' };
+// list/idx: the places the arrows and swipes step through (see openCalm).
+const calm = { el: $('#calm'), sky: null, open: false, weather: '', list: [], idx: 0 };
 const calmButton = () => `<button class="pill calm-open-btn" type="button" id="calm-open">${esc(t('calm.open'))}</button>`;
 
 function openCalm() {
   if (calm.open) return;
   blip('select');
   calm.open = true;
+  // Step through My Places, starting from the place on screen (first in the
+  // list if it isn't saved, so you can swipe back to it).
+  calm.list = isSaved(state.viewing) ? state.saved.map(p => ({ ...p })) : [{ ...state.viewing }, ...state.saved];
+  calm.idx = Math.max(0, calm.list.findIndex(p => sameLoc(p, state.viewing)));
+  prefetchCalm();
   calm.sky ??= createCalmSky($('#calm-sky'));
   calm.el.hidden = false;
   document.body.classList.add('calm-open');
@@ -1104,15 +1112,83 @@ function closeCalm(fromHistory = false) {
   history.replaceState(null, '', location.search + '#' + state.view);
 }
 $('#calm-back').addEventListener('click', () => { blip('select'); closeCalm(); });
+
+// Next or previous place (dir = 1 or -1): the text slides in from that side
+// and the sky changes to its weather.
+function calmStep(dir) {
+  const n = calm.list.length;
+  if (!calm.open || n < 2) return;
+  blip('select');
+  calm.idx = (calm.idx + dir + n) % n;
+  const body = $('#calm-body');
+  body.classList.remove('slide-next', 'slide-prev');
+  void body.offsetWidth; // restart the animation
+  body.classList.add(dir > 0 ? 'slide-next' : 'slide-prev');
+  clearTimeout(calm.slideTimer);
+  calm.slideTimer = setTimeout(() => body.classList.remove('slide-next', 'slide-prev'), 700);
+  body.scrollTop = 0;
+  openLocation(calm.list[calm.idx]);
+  prefetchCalm();
+}
+// Fetch the neighbours' forecasts ahead (they're cached), so the next step is instant.
+function prefetchCalm() {
+  const n = calm.list.length;
+  if (n < 2) return;
+  for (const d of [1, -1]) {
+    const p = calm.list[(calm.idx + d + n) % n];
+    fetchForecast(p.lat, p.lon).catch(() => {});
+  }
+}
+$('#calm-prev').addEventListener('click', () => calmStep(-1));
+$('#calm-next').addEventListener('click', () => calmStep(1));
+
+// Swipes on touch screens. Horizontal only (the page still scrolls up and
+// down), and not on the hourly strip, which scrolls sideways itself.
+{
+  const body = $('#calm-body');
+  let swipe = null;
+  body.addEventListener('pointerdown', e => {
+    swipe = e.pointerType === 'mouse' || e.target.closest('.calm-hours') ? null : { x: e.clientX, y: e.clientY, t: performance.now() };
+  });
+  body.addEventListener('pointerup', e => {
+    if (!swipe) return;
+    const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y, quick = performance.now() - swipe.t < 700;
+    swipe = null;
+    if (quick && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) calmStep(dx < 0 ? 1 : -1);
+  });
+  body.addEventListener('pointercancel', () => { swipe = null; });
+}
 addEventListener('popstate', () => { if (calm.open) closeCalm(true); });
+
+// The arrows: hidden with a single place; each names where it goes.
+function renderCalmNav() {
+  const n = calm.list.length;
+  calm.el.classList.toggle('has-arrows', n > 1);
+  for (const [id, d, key] of [['#calm-prev', -1, 'calm.prev'], ['#calm-next', 1, 'calm.next']]) {
+    const b = $(id);
+    b.hidden = n < 2;
+    if (n < 2) continue;
+    const label = `${t(key)}: ${placeName(calm.list[(calm.idx + d + n) % n])}`;
+    b.setAttribute('aria-label', label);
+    b.title = label;
+  }
+}
 
 function renderCalm() {
   if (!calm.open) return;
   const v = state.viewing, fc = state.fc;
+  renderCalmNav();
+  const body = $('#calm-body');
   if (!fc) {
-    $('#calm-body').innerHTML = `<header class="calm-hero"><h2 id="calm-place">${esc(placeName(v))}</h2><p class="calm-cond">${esc(t('loading'))}</p></header>`;
+    if (body.querySelector('.calm-temp')) {
+      body.classList.add('is-loading');
+      $('#calm-place').textContent = placeName(v);
+    } else {
+      body.innerHTML = `<header class="calm-hero"><h2 id="calm-place">${esc(placeName(v))}</h2><p class="calm-cond">${esc(t('loading'))}</p></header>`;
+    }
     return;
   }
+  body.classList.remove('is-loading');
   const c = fc.current, today = dayRow(fc, 0), desc = describe(c.weather_code, !!c.is_day);
   // Rebuild the sky only when the weather changes (not on every re-render).
   const weather = `${c.weather_code}|${c.is_day}`;
@@ -1131,6 +1207,7 @@ function renderCalm() {
   $('#calm-body').innerHTML = `
     <header class="calm-hero">
       <h2 id="calm-place">${esc(placeName(v))}</h2>
+      ${calm.list.length > 1 ? `<div class="calm-dots" aria-hidden="true">${calm.list.map((_, i) => `<i${i === calm.idx ? ' class="on"' : ''}></i>`).join('')}</div>` : ''}
       <div class="calm-temp">${T(c.temperature_2m)}</div>
       <p class="calm-cond">${esc(desc.label)}</p>
       <p class="calm-hilo">${esc(t('calm.hilo', { hi: T(today.hi), lo: T(today.lo) }))} · ${esc(t('now.feels', { t: T(c.apparent_temperature) }))}</p>
@@ -1166,12 +1243,15 @@ $('#units').addEventListener('click', () => {
   blip('select');
   renderTop(); render(false); renderTicker(); globe?.refreshLabels();
 });
-$('#music').addEventListener('click', () => {
+// The top bar's music switch, and the same one in Calm View.
+function toggleMusic() {
   state.music = !state.music;
   store.set('music', state.music);
   setMusic(state.music);
   renderTop();
-});
+}
+$('#music').addEventListener('click', toggleMusic);
+$('#calm-music').addEventListener('click', toggleMusic);
 $('#info').addEventListener('click', () => { blip('select'); $('#info-dialog').showModal(); });
 $('#prev').addEventListener('click', () => step(-1));
 $('#next').addEventListener('click', () => step(1));
@@ -1386,7 +1466,11 @@ function applyLanguage() {
 }
 
 document.addEventListener('keydown', e => {
-  if (calm.open) { if (e.key === 'Escape') closeCalm(); return; }
+  if (calm.open) {
+    if (e.key === 'Escape') closeCalm();
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') calmStep(e.key === 'ArrowRight' ? 1 : -1);
+    return;
+  }
   if (!state.started || document.querySelector('dialog[open]') || !langMenu.hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
   if (e.key === 'Escape') {
     if (pickCard) closePick(); else setExplore(false);
@@ -1457,7 +1541,10 @@ initGamepad({
     applyPlaying();
     toast(t(anim.playing ? 'anim.play' : 'anim.pause'));
   },
-  screen(dir) { if (!calm.open && !document.querySelector('dialog[open]')) step(dir); },
+  screen(dir) {
+    if (calm.open) calmStep(dir);
+    else if (!document.querySelector('dialog[open]')) step(dir);
+  },
   connected(on) {
     document.body.classList.toggle('has-pad', on);
     toast(t(on ? 'pad.connected' : 'pad.disconnected'));

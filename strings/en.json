@@ -88,6 +88,8 @@
   "calm.open": "Open Calm View",
   "calm.title": "Calm View",
   "calm.back": "Back to Globe",
+  "calm.prev": "Previous place",
+  "calm.next": "Next place",
   "calm.hourly": "Hourly forecast",
   "calm.daily": "{n}-day forecast",
   "calm.now": "Now",

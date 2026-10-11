@@ -119,6 +119,13 @@
   </main>
 
   <nav id="dock" class="dock glass" data-i18n-attr="aria-label:nav.screens" aria-label="Forecast screens"></nav>
+  <!-- The span the rain/radar animation covers, and the moment on screen
+       (decorative: the Globe screen has the labelled sliders). -->
+  <div id="timeline" class="timeline" aria-hidden="true" hidden>
+    <span id="tl-start"></span>
+    <div class="tl-track"><i class="tl-fill"></i><i class="tl-dot"></i></div>
+    <span id="tl-end"></span>
+  </div>
   <div class="ticker" data-i18n-attr="aria-label:ticker.label" aria-label="World weather"><div id="ticker" class="ticker-track"></div></div>
 
   <div id="intro" class="intro">

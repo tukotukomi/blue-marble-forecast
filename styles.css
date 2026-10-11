@@ -693,3 +693,30 @@ body.collapsed .panel-body, body.collapsed #panel-date { display: none; }
 body.collapsed .panel-head { align-items: center; flex-wrap: nowrap; border-bottom: 0; padding: 10px 10px 10px 16px; }
 body.collapsed .panel { cursor: pointer; animation: fold-in 0.25s cubic-bezier(.3, 1.4, .5, 1); }
 @keyframes fold-in { from { transform: translateY(12px); opacity: 0.6; } }
+
+/* ---------- timeline (above the dock) ---------- */
+/* The span the animation covers, earliest time left, latest right, with a
+   dot at the moment on screen. --dock-top comes from measureSafe() in app.js. */
+.timeline {
+  position: fixed; z-index: 8; left: 50%; bottom: calc(var(--dock-top, 120px) + 6px); transform: translateX(-50%);
+  width: min(460px, calc(100vw - 48px)); display: flex; align-items: center; gap: 10px; pointer-events: none;
+  color: rgba(255, 255, 255, 0.82); font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 1px 4px rgba(0, 10, 30, 0.7);
+  transition: opacity 0.35s ease;
+}
+.timeline[hidden] { display: none; }
+.tl-track { position: relative; flex: 1; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.25); box-shadow: 0 1px 4px rgba(0, 10, 30, 0.35); }
+.tl-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 100%); border-radius: inherit; background: rgba(255, 255, 255, 0.55); transition: width 0.45s ease; }
+.tl-dot {
+  position: absolute; top: 50%; left: calc(var(--p, 0) * 100%); width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22), 0 1px 4px rgba(0, 10, 30, 0.5);
+  transition: left 0.45s ease;
+}
+.timeline.jump .tl-fill, .timeline.jump .tl-dot { transition: none; }
+body:not(.started) .timeline, body.explore .timeline { opacity: 0; }
+/* Leave room for it above the dock. */
+body.has-timeline { --bottom: 168px; }
+@media (max-width: 860px) {
+  .timeline { width: calc(100vw - 48px); }
+  body.has-timeline { --bottom: 150px; }
+}

@@ -126,7 +126,10 @@ let pickCard = null;
 let safe = { top: 0, bottom: 0 };
 function measureSafe() {
   if (document.body.classList.contains('explore')) { safe = { top: 0, bottom: 0 }; return; }
-  safe = { top: $('.topbar').getBoundingClientRect().bottom, bottom: innerHeight - $('#dock').getBoundingClientRect().top };
+  const dockTop = innerHeight - $('#dock').getBoundingClientRect().top;
+  document.documentElement.style.setProperty('--dock-top', `${dockTop}px`);
+  const timeline = $('#timeline').hidden ? 0 : 24;
+  safe = { top: $('.topbar').getBoundingClientRect().bottom, bottom: dockTop + timeline };
 }
 addEventListener('resize', measureSafe);
 
@@ -821,6 +824,39 @@ function onLayerFrame(name, idx) {
   const label = $(`#anim-${name}-time`), range = $(`#anim-${name}-range`);
   if (label) label.textContent = frameLabel(name);
   if (range && document.activeElement !== range) range.value = idx;
+  renderTimeline();
+}
+
+// ---------- timeline (above the dock) ----------
+// A slim bar for the span the animation covers: the earliest time on the
+// left, the latest on the right, and a dot at the moment on screen. It
+// follows the shared observation clock (radar and satellite rain), or the
+// forecast when that's the only loop switched on.
+function timelineSpan() {
+  const obs = globe?.clock();
+  if (obs) return obs;
+  const a = anim.fcst;
+  if (!isOn('fcst') || a.frames.length < 2 || a.idx < 0) return null;
+  return { start: +a.frames[0].time, end: +a.frames.at(-1).time, now: +a.frames[a.idx].time };
+}
+let timelineP = 0;
+function renderTimeline() {
+  const el = $('#timeline'), span = timelineSpan();
+  const show = !!span && span.end > span.start;
+  if (el.hidden === show) {
+    el.hidden = !show;
+    document.body.classList.toggle('has-timeline', show);
+    measureSafe();
+  }
+  if (!show) return;
+  const fmt = new Intl.DateTimeFormat(locale(), { hour: 'numeric', minute: '2-digit', hour12: use12h() });
+  $('#tl-start').textContent = fmt.format(span.start);
+  $('#tl-end').textContent = fmt.format(span.end);
+  const p = Math.max(0, Math.min(1, (span.now - span.start) / (span.end - span.start)));
+  // Glide forward with the crossfade; jump straight back when the loop restarts.
+  el.classList.toggle('jump', p < timelineP);
+  el.style.setProperty('--p', p);
+  timelineP = p;
 }
 
 function layersHTML() {
@@ -863,6 +899,7 @@ function bindLayers() {
 
 // Redraw just the layer controls (keeps the rest of the panel and its focus).
 function updateLayersUI() {
+  renderTimeline();
   const box = $('#layers');
   if (!box) return;
   const focusedId = document.activeElement?.closest('#layers') ? document.activeElement.id || document.activeElement.dataset.layer : null;
@@ -1198,6 +1235,7 @@ function setExplore(on) {
   closeLangMenu();
   if (on) $('#explore-exit').focus(); else if (['globe', 'region'].includes(state.view)) $('#explore').focus();
   measureSafe();
+  setTimeout(measureSafe, 400); // after the dock has slid back
   globe?.refreshLabels();
 }
 $('#explore').addEventListener('click', () => { blip('select'); setExplore(true); });
@@ -1221,6 +1259,7 @@ function applyLanguage() {
   renderTop();
   render(false);
   renderTicker();
+  renderTimeline();
   globe?.refreshLabels();
   if (state.started) requestAnimationFrame(measureSafe);
 }

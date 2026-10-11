@@ -1052,9 +1052,22 @@ function fitToKeyboard() {
   dlg.style.setProperty('--vv-height', `${vv.height}px`);
   dlg.style.setProperty('--kb-shift', '0px');
   if (!keyboard) return;
-  // Where the dialog's top shows within the visible area now; move it to 10px.
+  // Where the dialog's top shows within the visible area now; move it to 10px
+  // below the status bar (the home-screen app draws underneath it).
   const shown = dlg.getBoundingClientRect().top - vv.offsetTop;
-  dlg.style.setProperty('--kb-shift', `${Math.round(10 - shown)}px`);
+  dlg.style.setProperty('--kb-shift', `${Math.round(statusBarHeight() + 10 - shown)}px`);
+}
+
+// The status bar's height (safe-area-inset-top), measured with a hidden
+// element since script can't read env() directly. 0 in a normal browser tab.
+let safeTopProbe;
+function statusBarHeight() {
+  if (!safeTopProbe) {
+    safeTopProbe = document.createElement('div');
+    safeTopProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top);visibility:hidden;pointer-events:none';
+    document.body.appendChild(safeTopProbe);
+  }
+  return safeTopProbe.offsetHeight;
 }
 window.visualViewport?.addEventListener('resize', fitToKeyboard);
 window.visualViewport?.addEventListener('scroll', fitToKeyboard);

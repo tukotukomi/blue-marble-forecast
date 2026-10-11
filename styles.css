@@ -415,7 +415,8 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 #loc-dialog .results { flex: 1; min-height: 0; overflow-y: auto; }
 @media (max-width: 860px) {
   #loc-dialog { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px - env(safe-area-inset-top)); }
-  #loc-dialog.keyboard { margin-top: calc(var(--vv-top, 0px) + 10px); max-height: calc(var(--vv-height, 100dvh) - 20px); }
+  /* --kb-shift: the measured correction that puts its top 10px into the visible area. */
+  #loc-dialog.keyboard { margin-top: calc(12px + env(safe-area-inset-top) + var(--kb-shift, 0px)); max-height: calc(var(--vv-height, 100dvh) - 20px); }
   /* While typing, the results get the room: the current place and the GPS
      button come back when the keyboard closes. */
   #loc-dialog.keyboard .loc-current, #loc-dialog.keyboard .geo { display: none; }

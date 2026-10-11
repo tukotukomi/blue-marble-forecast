@@ -1035,19 +1035,29 @@ $('#loc-make-home').addEventListener('click', () => {
 });
 
 // On-screen keyboards: keep the dialog in the part of the screen that's still
-// visible. iOS doesn't shrink the page for its keyboard, but visualViewport
-// reports the visible area; Android Chrome shrinks the page itself
-// (interactive-widget in index.html), which this then simply follows.
+// visible. visualViewport reports that area (Android Chrome also shrinks the
+// page itself, via interactive-widget in index.html). The keyboard is spotted
+// by the visible height dropping below what it was when the dialog opened,
+// and the dialog is then placed by measuring where it actually shows, since
+// iOS versions differ in whether fixed elements follow the visible area or
+// stay put while it scrolls.
+let kbFullHeight = 0;
 function fitToKeyboard() {
   const vv = window.visualViewport;
   if (!vv || !dlg.open) return;
-  const keyboard = innerHeight - vv.height > 120;
+  kbFullHeight = Math.max(kbFullHeight, vv.height);
+  const keyboard = kbFullHeight - vv.height > 120;
   dlg.classList.toggle('keyboard', keyboard);
-  dlg.style.setProperty('--vv-top', `${vv.offsetTop}px`);
   dlg.style.setProperty('--vv-height', `${vv.height}px`);
+  dlg.style.setProperty('--kb-shift', '0px');
+  if (!keyboard) return;
+  // Where the dialog's top shows within the visible area now; move it to 10px.
+  const shown = dlg.getBoundingClientRect().top - vv.offsetTop;
+  dlg.style.setProperty('--kb-shift', `${Math.round(10 - shown)}px`);
 }
 window.visualViewport?.addEventListener('resize', fitToKeyboard);
 window.visualViewport?.addEventListener('scroll', fitToKeyboard);
+dlg.addEventListener('close', () => { kbFullHeight = 0; dlg.classList.remove('keyboard'); });
 $('#loc-btn').addEventListener('click', openSearch);
 // Back to the home location: its forecast if another place is showing,
 // otherwise just the globe flown back over it (e.g. after exploring).
@@ -1062,23 +1072,34 @@ $('#home-btn').addEventListener('click', () => {
 $('#loc-q').addEventListener('input', e => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  if (q.length < 2) return;
-  searchTimer = setTimeout(async () => {
-    try {
-      const res = await searchPlaces(q, searchLang());
-      $('#loc-results').innerHTML = res.length ? res.map((r, i) => `<li><button type="button" data-i="${i}">
-        <b>${esc(r.name)}</b><span>${esc([r.region, countryName(r.cc) || r.country].filter(Boolean).join(', '))}</span></button></li>`).join('')
-        : searchHint(t('search.none', { q }));
-      $('#loc-results').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-        const r = res[+b.dataset.i];
-        dlg.close();
-        openLocation(r, { asHome: $('#loc-home').checked });
-      }));
-    } catch {
-      $('#loc-results').innerHTML = searchHint(t('search.unavailable'));
-    }
-  }, 280);
+  if (q.length >= 2) searchTimer = setTimeout(() => runSearch(q), 280);
 });
+// The keyboard's Search/Enter key: search now and put the keyboard away, so
+// the whole list of results is in view.
+$('#loc-q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (q.length >= 2) runSearch(q);
+  e.target.blur();
+});
+async function runSearch(q) {
+  try {
+    const res = await searchPlaces(q, searchLang());
+    if ($('#loc-q').value.trim() !== q) return; // typed on since; a newer search follows
+    $('#loc-results').innerHTML = res.length ? res.map((r, i) => `<li><button type="button" data-i="${i}">
+      <b>${esc(r.name)}</b><span>${esc([r.region, countryName(r.cc) || r.country].filter(Boolean).join(', '))}</span></button></li>`).join('')
+      : searchHint(t('search.none', { q }));
+    $('#loc-results').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      const r = res[+b.dataset.i];
+      dlg.close();
+      openLocation(r, { asHome: $('#loc-home').checked });
+    }));
+  } catch {
+    $('#loc-results').innerHTML = searchHint(t('search.unavailable'));
+  }
+}
 $('#loc-geo').addEventListener('click', () => {
   if (!navigator.geolocation) return toast(t('geo.unsupported'));
   $('#loc-geo').disabled = true;

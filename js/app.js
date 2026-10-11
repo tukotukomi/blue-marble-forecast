@@ -66,7 +66,7 @@ const state = {
 state.viewing = store.get('viewing', null) || state.home;
 
 // Dock order; the app still opens on 'now' (see start()).
-const VIEWS = ['globe', 'now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry', 'places'];
+const VIEWS = ['places', 'globe', 'now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry'];
 
 const ico = d => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const DOCK_ICONS = {

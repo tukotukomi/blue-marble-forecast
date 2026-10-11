@@ -1538,10 +1538,10 @@ $('#install-btn').addEventListener('click', async () => {
 });
 
 // ---------- collapsed window (phones) ----------
-// Forecast screens only: Globe and Region already have a small card and
-// Explore mode. Picking another screen or place opens the window again.
+// The forecast screens and the Globe menu (Region keeps its small card, where
+// taps pick the area to show). Picking another screen or place opens it again.
 const phone = matchMedia('(max-width: 860px)');
-const canCollapse = () => phone.matches && !['globe', 'region'].includes(state.view);
+const canCollapse = () => phone.matches && state.view !== 'region';
 const isCollapsed = () => document.body.classList.contains('collapsed');
 function setCollapsed(on) {
   if (isCollapsed() === on) return;

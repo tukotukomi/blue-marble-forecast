@@ -755,6 +755,8 @@ body.has-pad .pad-help { display: block; }
   box-shadow: 0 4px 10px -4px rgba(26, 143, 208, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 body.collapsed .expand-btn { display: inline-flex; }
+/* The folded Globe menu also keeps Explore: the two sit together on the right. */
+body[data-view="globe"].collapsed .expand-btn { margin-left: 8px; }
 body.collapsed .panel-body, body.collapsed #panel-date { display: none; }
 body.collapsed .panel-head { align-items: center; flex-wrap: nowrap; border-bottom: 0; padding: 10px 10px 10px 16px; }
 body.collapsed .panel { cursor: pointer; animation: fold-in 0.25s cubic-bezier(.3, 1.4, .5, 1); }

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Stamps js/version.js on every commit with the build number (this commit's
+# position in the history, so it only ever goes up) and the date, then adds
+# it to the commit. The start screen shows them, so what's live is easy to tell.
+# Turned on per clone with:  git config core.hooksPath tools/git-hooks
+build=$(( $(git rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))
+date=$(date -u +%Y-%m-%d)
+version=$(sed -n "s/^export const VERSION = '\(.*\)';/\1/p" js/version.js 2>/dev/null)
+cat > js/version.js <<JS
+// Written by tools/git-hooks/pre-commit on every commit; shown on the start
+// screen. Change VERSION by hand for bigger releases; BUILD counts commits.
+export const VERSION = '${version:-1.0}';
+export const BUILD = ${build};
+export const BUILT = '${date}';
+JS
+git add js/version.js

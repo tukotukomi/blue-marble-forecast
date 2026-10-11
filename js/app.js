@@ -5,6 +5,7 @@ import { fetchForecastRain } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
 import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createCalmSky } from './calm.js';
+import { VERSION, BUILD } from './version.js';
 import { createGlobe } from './globe.js';
 import { setMusic, blip, unlock } from './audio.js';
 import { LANGUAGES, detectLang, setLang, getLang, locale, searchLang, t, applyStatic } from './i18n.js';
@@ -1540,6 +1541,7 @@ $('#explore-exit').addEventListener('click', () => { blip('select'); setExplore(
 
 // Re-render every piece of text after a language change.
 function applyLanguage() {
+  $('#version').textContent = t('app.version', { v: VERSION, b: BUILD });
   renderLangButton();
   renderInstall();
   renderSources();

@@ -60,3 +60,15 @@ Then set `RELAY_URL` in `js/opera.js` to the Worker's URL (ending in `/`).
 ## Deploying
 
 GitHub Pages serves the `main` branch at the domain in `CNAME`.
+
+## Version number
+
+The start screen shows the version and build (`js/version.js`). A git hook
+stamps the build number (the commit count) and date on every commit; turn it
+on once per clone with:
+
+```
+git config core.hooksPath tools/git-hooks
+```
+
+Change `VERSION` in `js/version.js` by hand for bigger releases.

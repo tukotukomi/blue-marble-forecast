@@ -57,6 +57,7 @@
   "intro.title": "Blue Marble <em>Forecast</em>",
   "intro.start": "Comenzar",
   "intro.fine": "Pronósticos de la NOAA y el Servicio Meteorológico Nacional de EE. UU. · Imágenes de la Tierra de la NASA",
+  "app.version": "Versión {v} · Compilación {b}",
 
   "view.now.label": "Ahora",
   "view.now.title": "Condiciones actuales",

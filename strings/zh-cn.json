@@ -57,6 +57,7 @@
   "intro.title": "Blue Marble <em>Forecast</em>",
   "intro.start": "开始",
   "intro.fine": "天气预报来自 NOAA 与美国国家气象局 · 地球影像来自 NASA",
+  "app.version": "版本 {v} · 构建 {b}",
 
   "view.now.label": "实况",
   "view.now.title": "当前天气",

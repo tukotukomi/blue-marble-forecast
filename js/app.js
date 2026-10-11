@@ -386,12 +386,44 @@ if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
 }
 
 const dock = $('#dock');
+// The buttons scroll sideways inside a track. On phones they're sized so the
+// last one shows only half (styles.css), and the track fades out on whichever
+// side has more buttons, so it's clear the menu scrolls.
 function renderDock() {
-  dock.innerHTML = VIEWS.map(id => `<button type="button" data-view="${id}" aria-current="${id === state.view ? 'page' : 'false'}">${DOCK_ICONS[id]}<span>${esc(t(`view.${id}.label`))}</span></button>`).join('');
+  dock.innerHTML = `<div class="dock-track">${VIEWS.map(id => `<button type="button" data-view="${id}" aria-current="${id === state.view ? 'page' : 'false'}">${DOCK_ICONS[id]}<span>${esc(t(`view.${id}.label`))}</span></button>`).join('')}</div>`;
   dock.querySelectorAll('button').forEach(b => {
     b.addEventListener('click', () => go(b.dataset.view));
     b.addEventListener('pointerenter', () => blip('hover'));
   });
+  const track = dock.firstElementChild;
+  track.addEventListener('scroll', dockFades, { passive: true });
+  requestAnimationFrame(() => { revealDockButton(state.view, false); dockFades(); });
+}
+
+function dockFades() {
+  const track = dock.firstElementChild;
+  if (!track) return;
+  const more = track.scrollWidth - track.clientWidth;
+  track.style.setProperty('--fade-l', track.scrollLeft > 2 ? '28px' : '0px');
+  track.style.setProperty('--fade-r', track.scrollLeft < more - 2 ? '28px' : '0px');
+}
+addEventListener('resize', dockFades);
+
+// Keep the current screen's button in view (arrows, keys or controller can
+// move to one that's scrolled off). Steps can come quicker than the smooth
+// scroll (a held key, a controller), so each works from where the track is
+// heading rather than where it is right now.
+let dockAim = null, dockAimTimer;
+function revealDockButton(id, smooth = true) {
+  const track = dock.firstElementChild, b = track?.querySelector(`[data-view="${id}"]`);
+  if (!b) return;
+  const l = b.offsetLeft, r = l + b.offsetWidth, from = dockAim ?? track.scrollLeft;
+  const to = l < from ? l - 8 : r > from + track.clientWidth ? r - track.clientWidth + 8 : null;
+  if (to == null) return;
+  dockAim = Math.max(0, Math.min(track.scrollWidth - track.clientWidth, to));
+  clearTimeout(dockAimTimer);
+  dockAimTimer = setTimeout(() => { dockAim = null; }, 600);
+  track.scrollTo({ left: dockAim, behavior: smooth ? 'smooth' : 'auto' });
 }
 
 // ---------- view switching ----------
@@ -407,6 +439,7 @@ function go(id, { sound = true } = {}) {
   setCollapsed(false);
   state.view = id;
   dock.querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.view === id ? 'page' : 'false'));
+  revealDockButton(id);
   document.body.dataset.view = id;
   const v = state.viewing;
   if (globe) {
@@ -655,7 +688,9 @@ const RENDER = {
           <span class="place-text"><b>${esc(placeName(p))}${home}</b><small>${esc(sub)}</small></span>
           <span class="place-temps">${cur ? `<b>${T(cur.temperature_2m)}</b><small><span class="hi">${T(day.temperature_2m_max[0])}</span> <span class="lo">${T(day.temperature_2m_min[0])}</span></small>` : '<b>–</b>'}</span>
         </button>
-        <button class="place-star" type="button" data-i="${i}" aria-label="${esc(t('places.remove', { place: placeName(p) }))}">${starIcon(true)}</button>
+        ${sameLoc(p, state.home)
+          ? `<span class="place-star is-home" title="${esc(t('places.homeKept'))}">${HOME_PIN_ICON}</span>`
+          : `<button class="place-star" type="button" data-i="${i}" aria-label="${esc(t('places.remove', { place: placeName(p) }))}">${starIcon(true)}</button>`}
       </li>`;
     }).join('')}</ul>${calmButton()}`;
   },
@@ -686,7 +721,7 @@ const AFTER = {
       if (!sameLoc(p, state.viewing)) openLocation(p);
       go('now', { sound: false });
     }));
-    document.querySelectorAll('.place-star').forEach(b => b.addEventListener('click', () => toggleSaved(state.saved[+b.dataset.i])));
+    document.querySelectorAll('button.place-star').forEach(b => b.addEventListener('click', () => toggleSaved(state.saved[+b.dataset.i])));
     $('#calm-open')?.addEventListener('click', openCalm);
   },
   globe: () => bindLayers(),
@@ -955,7 +990,7 @@ function updateHiRes(name) {
 function openLocation(loc, { asHome = false } = {}) {
   state.viewing = { ...loc };
   setCollapsed(false);
-  if (asHome) { state.home = { ...loc }; store.set('home', state.home); }
+  if (asHome) { state.home = { ...loc }; store.set('home', state.home); keepHomeSaved(); }
   state.fc = null;
   render(false);
   loadLocation();
@@ -993,6 +1028,7 @@ $('#loc-make-home').addEventListener('click', () => {
   blip('select');
   state.home = { ...state.viewing };
   store.set('home', state.home);
+  keepHomeSaved();
   renderTop();
   renderLocCurrent();
   toast(t('toast.home', { place: placeName(state.home) }));
@@ -1067,14 +1103,18 @@ const isSaved = l => state.saved.some(p => sameLoc(p, l));
 const starIcon = (filled, size = 20) => `<svg class="star" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.83 1.03-6L3.3 9.6l6-.9Z" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
 
 function syncStar() {
-  const on = isSaved(state.viewing), b = $('#star-btn'), label = t(on ? 'places.unsave' : 'places.save');
+  const on = isSaved(state.viewing), b = $('#star-btn');
+  const label = t(sameLoc(state.viewing, state.home) ? 'places.homeKept' : on ? 'places.unsave' : 'places.save');
   b.classList.toggle('on', on);
   b.setAttribute('aria-pressed', String(on));
   b.setAttribute('aria-label', label);
   b.title = label;
 }
 
+// Home is saved automatically and always first (see keepHomeSaved), so the
+// star can't remove it.
 function toggleSaved(loc) {
+  if (sameLoc(loc, state.home)) { blip('select'); toast(t('places.homeKept')); return; }
   const was = isSaved(loc);
   state.saved = was ? state.saved.filter(p => !sameLoc(p, loc)) : [...state.saved, { ...loc }];
   store.set('saved', state.saved);
@@ -1084,6 +1124,16 @@ function toggleSaved(loc) {
   if (state.view === 'places') render(false);
 }
 $('#star-btn').addEventListener('click', () => toggleSaved(state.viewing));
+
+// Home goes into My Places on its own, at the top. The previous home (after
+// a change) stays as an ordinary saved place.
+function keepHomeSaved() {
+  const saved = [{ ...state.home }, ...state.saved.filter(p => !sameLoc(p, state.home))];
+  if (JSON.stringify(saved) === JSON.stringify(state.saved)) return;
+  state.saved = saved;
+  store.set('saved', saved);
+}
+const HOME_PIN_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" fill="#ff5d6c" stroke="#fff" stroke-width="1.5"/><path d="M12 6.6 8 10.1h1.3v3.3h2v-2h1.4v2h2v-3.3H16Z" fill="#fff"/></svg>';
 
 const savedWx = new Map(); // placeKey -> Open-Meteo current + daily
 let savedWxFor = '', savedWxAt = 0;
@@ -1577,6 +1627,7 @@ initGamepad({
   },
 });
 
+keepHomeSaved();
 await setLang(detectLang());
 applyLanguage();
 // Loading order: the globe's first picture comes first (index.html preloads

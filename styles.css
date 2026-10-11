@@ -182,9 +182,19 @@ body[data-view="globe"] .stage, body[data-view="region"] .stage { align-items: f
 /* ---------- dock & ticker ---------- */
 .dock {
   position: fixed; z-index: 8; bottom: 52px; left: 50%; transform: translateX(-50%);
-  display: flex; gap: 4px; padding: 6px; border-radius: 26px; max-width: calc(100vw - 24px); overflow-x: auto; scrollbar-width: none;
+  display: flex; border-radius: 26px; max-width: calc(100vw - 24px);
 }
-.dock::-webkit-scrollbar { display: none; }
+/* The buttons scroll inside the track, which fades out on any side with more
+   buttons (--fade-l/r from dockFades() in app.js); the glass stays solid. */
+.dock-track {
+  /* The padding is inside the scroller so the current button's glow and the
+     hover lift aren't clipped. */
+  position: relative; flex: 1; min-width: 0; display: flex; gap: 4px; padding: 6px; overflow-x: auto; scrollbar-width: none;
+  border-radius: inherit;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l, 0px), #000 calc(100% - var(--fade-r, 0px)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l, 0px), #000 calc(100% - var(--fade-r, 0px)), transparent 100%);
+}
+.dock-track::-webkit-scrollbar { display: none; }
 .dock button {
   flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px;
   width: 74px; padding: 8px 4px 6px; border: 0; border-radius: 20px; background: transparent;
@@ -447,6 +457,15 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
   .panel { width: 100%; }
   .dock { bottom: 46px; border-radius: 22px; left: 16px; right: 16px; transform: none; max-width: none; }
   .dock button { width: 64px; font-size: 11px; }
+  /* When the buttons don't all fit, size them so the last one on screen is
+     cut in half: the usual cue that a row scrolls. How many show depends on
+     the width, keeping buttons near their natural size. Container units are
+     the track's width; each line is (width - gaps) / buttons showing. */
+  .dock-track { container: dock / inline-size; }
+  @container dock (max-width: 607px) { .dock button { width: calc((100cqw - 28px) / 7.5); } }
+  @container dock (max-width: 540px) { .dock button { width: calc((100cqw - 24px) / 6.5); } }
+  @container dock (max-width: 460px) { .dock button { width: calc((100cqw - 20px) / 5.5); } }
+  @container dock (max-width: 380px) { .dock button { width: calc((100cqw - 16px) / 4.5); } }
   .ticker { height: 36px; }
   .tick-item { height: 36px; }
   body[data-view="globe"] .panel, body[data-view="region"] .panel { width: 100%; }
@@ -789,6 +808,8 @@ body.has-timeline { --bottom: 172px; }
 .place-temps .lo { color: var(--lo); }
 .place-star { flex: none; width: 44px; border: 0; background: none; color: #f5b301; display: grid; place-items: center; transition: background 0.15s; }
 .place-star:hover { background: rgba(245, 179, 1, 0.12); }
+/* Home's row: the house pin, which isn't a button (home always stays). */
+.place-star.is-home, .place-star.is-home:hover { background: none; cursor: default; }
 .places-empty .star { color: #f5b301; }
 @media (max-width: 860px) {
   .place-open { gap: 10px; padding: 8px 2px 8px 10px; }

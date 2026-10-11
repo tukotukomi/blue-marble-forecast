@@ -82,6 +82,7 @@
   "places.removed": "{place} se quitó de Mis lugares",
   "places.remove": "Quitar {place}",
   "places.home": "Casa",
+  "places.homeKept": "Tu casa siempre se queda en Mis lugares.",
   "calm.open": "Abrir Vista Calma",
   "calm.title": "Vista Calma",
   "calm.back": "Volver al globo",

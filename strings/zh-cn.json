@@ -82,6 +82,7 @@
   "places.removed": "已将{place}从我的地点中移除",
   "places.remove": "移除{place}",
   "places.home": "家",
+  "places.homeKept": "你的家会一直保留在我的地点中。",
   "calm.open": "打开宁静视图",
   "calm.title": "宁静视图",
   "calm.back": "返回地球",

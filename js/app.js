@@ -135,9 +135,7 @@ function measureSafe() {
   root.setProperty('--dock-left', `${dock.left}px`);
   root.setProperty('--dock-width', `${dock.width}px`);
   const timeline = $('#timeline').hidden ? 0 : 24;
-  const topbar = $('.topbar').getBoundingClientRect().bottom;
-  root.setProperty('--topbar-bottom', `${topbar}px`); // phones put the "viewing away" bar under it
-  safe = { top: topbar, bottom: dockTop + timeline };
+  safe = { top: $('.topbar').getBoundingClientRect().bottom, bottom: dockTop + timeline };
 }
 // Again once the dock has finished moving (its position animates between the
 // phone and desktop layouts, e.g. when a phone rotates).
@@ -329,9 +327,8 @@ function renderTop() {
     b.classList.toggle('off', !state.music);
     b.setAttribute('aria-pressed', String(state.music));
   }
-  const away = !sameLoc(v, state.home);
-  $('#away').hidden = !away;
-  if (away) $('#away-text').innerHTML = esc(t('away.text', { home: '\u0000' })).replace('\u0000', `<b>${esc(placeName(state.home))}</b>`);
+  // The pin in the location chip marks home; elsewhere the chip is just the name.
+  $('#loc-btn').classList.toggle('home', sameLoc(v, state.home));
   syncStar();
   tick();
 }
@@ -976,9 +973,43 @@ function openSearch() {
   blip('select');
   $('#loc-q').value = '';
   $('#loc-results').innerHTML = searchHint(t('search.prompt'));
+  renderLocCurrent();
   dlg.showModal();
+  fitToKeyboard();
   $('#loc-q').focus();
 }
+
+// The place on screen, at the top of the dialog, with "Set as home" (or a
+// "Your home" tag when it already is).
+function renderLocCurrent() {
+  const v = state.viewing, home = sameLoc(v, state.home);
+  $('#loc-cur-name').textContent = placeName(v);
+  $('#loc-cur-sub').textContent = placeLine(v);
+  dlg.querySelector('.loc-current').classList.toggle('home', home);
+}
+$('#loc-make-home').addEventListener('click', () => {
+  blip('select');
+  state.home = { ...state.viewing };
+  store.set('home', state.home);
+  renderTop();
+  renderLocCurrent();
+  toast(t('toast.home', { place: placeName(state.home) }));
+});
+
+// On-screen keyboards: keep the dialog in the part of the screen that's still
+// visible. iOS doesn't shrink the page for its keyboard, but visualViewport
+// reports the visible area; Android Chrome shrinks the page itself
+// (interactive-widget in index.html), which this then simply follows.
+function fitToKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv || !dlg.open) return;
+  const keyboard = innerHeight - vv.height > 120;
+  dlg.classList.toggle('keyboard', keyboard);
+  dlg.style.setProperty('--vv-top', `${vv.offsetTop}px`);
+  dlg.style.setProperty('--vv-height', `${vv.height}px`);
+}
+window.visualViewport?.addEventListener('resize', fitToKeyboard);
+window.visualViewport?.addEventListener('scroll', fitToKeyboard);
 $('#loc-btn').addEventListener('click', openSearch);
 // Back to the home location: its forecast if another place is showing,
 // otherwise just the globe flown back over it (e.g. after exploring).
@@ -1024,13 +1055,6 @@ $('#loc-geo').addEventListener('click', () => {
     $('#loc-geo').disabled = false;
     toast(t('geo.failed'));
   }, { timeout: 10000, maximumAge: 600000 });
-});
-
-$('#away-back').addEventListener('click', () => { blip('select'); openLocation(state.home); });
-$('#away-home').addEventListener('click', () => {
-  blip('select');
-  state.home = { ...state.viewing }; store.set('home', state.home);
-  renderTop(); toast(t('toast.home', { place: placeName(state.home) }));
 });
 
 // ---------- My Places ----------

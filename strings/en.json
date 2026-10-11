@@ -47,9 +47,6 @@
   "units.mph": "{n} mph",
   "units.kmh": "{n} km/h",
 
-  "away.text": "Viewing away from {home}",
-  "away.back": "Back home",
-  "away.makeHome": "Make this home",
 
   "nav.prev": "Previous screen",
   "nav.next": "Next screen",
@@ -114,9 +111,12 @@
   "coord.e": "E",
   "coord.w": "W",
 
-  "toast.home": "{place} is now your home location.",
 
   "search.title": "Choose a location",
+  "search.current": "Currently showing",
+  "search.setHome": "Set as home",
+  "search.isHome": "Your home",
+  "toast.home": "{place} is now your home location.",
   "search.close": "Close",
   "search.placeholder": "Search city, town or postal code",
   "search.geo": "Use my current location",

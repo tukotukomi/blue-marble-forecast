@@ -47,9 +47,6 @@
   "units.mph": "{n} 英里/时",
   "units.kmh": "{n} 公里/时",
 
-  "away.text": "正在查看{home}以外的地点",
-  "away.back": "返回常用地点",
-  "away.makeHome": "设为常用地点",
 
   "nav.prev": "上一页",
   "nav.next": "下一页",
@@ -114,9 +111,12 @@
   "coord.e": "东经",
   "coord.w": "西经",
 
-  "toast.home": "{place}已设为常用地点。",
 
   "search.title": "选择地点",
+  "search.current": "当前显示",
+  "search.setHome": "设为家",
+  "search.isHome": "你的家",
+  "toast.home": "{place}已设为常用地点。",
   "search.close": "关闭",
   "search.placeholder": "搜索城市、城镇或邮政编码",
   "search.geo": "使用我的当前位置",

@@ -47,9 +47,6 @@
   "units.mph": "{n} mph",
   "units.kmh": "{n} km/h",
 
-  "away.text": "Estás viendo un lugar lejos de {home}",
-  "away.back": "Volver a casa",
-  "away.makeHome": "Fijar como casa",
 
   "nav.prev": "Pantalla anterior",
   "nav.next": "Pantalla siguiente",
@@ -114,9 +111,12 @@
   "coord.e": "E",
   "coord.w": "O",
 
-  "toast.home": "{place} es ahora tu ubicación principal.",
 
   "search.title": "Elige una ubicación",
+  "search.current": "Mostrando ahora",
+  "search.setHome": "Fijar como casa",
+  "search.isHome": "Tu casa",
+  "toast.home": "{place} es ahora tu ubicación principal.",
   "search.close": "Cerrar",
   "search.placeholder": "Busca una ciudad, pueblo o código postal",
   "search.geo": "Usar mi ubicación actual",

@@ -17,20 +17,27 @@
 }
 
 * { box-sizing: border-box; }
+/* A solid colour on the root as well as the gradient: Safari fills any area
+   the page doesn't cover (in the home-screen app, sometimes the strip where
+   its toolbar would be) with the root's background colour, and with only a
+   gradient there that fill was white. */
+html { background: #050b18; }
 html, body { height: 100%; }
 body {
   margin: 0;
   overflow: hidden;
   font-family: var(--font);
   color: var(--ink);
-  background: radial-gradient(ellipse at 70% 40%, #0e2246 0%, #050b18 60%, #02050c 100%);
+  background: #050b18 radial-gradient(ellipse at 70% 40%, #0e2246 0%, #050b18 60%, #02050c 100%);
   -webkit-font-smoothing: antialiased;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
 h1, h2, h3 { margin: 0; }
 
 /* ---------- globe & labels ---------- */
-.globe { position: fixed; inset: 0; }
+/* min-height: the full screen even if the layout viewport stops short of it
+   (seen in the iOS home-screen app). */
+.globe { position: fixed; inset: 0; min-height: 100lvh; }
 .globe canvas { width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 0.8s ease; touch-action: none; }
 body.globe-ready .globe canvas { opacity: 1; }
 .globe[data-mode="globe"] canvas, .globe[data-mode="region"] canvas { cursor: grab; }
@@ -115,6 +122,10 @@ body:not(.started) .labels { opacity: 0; }
   border: 0; min-width: 240px; text-align: left; transition: transform 0.15s;
 }
 .loc-chip:hover { transform: translateY(-1px); }
+/* The home pin shows only at home; without it the name gets a little more room. */
+.loc-chip .home-pin { display: none; flex: none; }
+.loc-chip.home .home-pin { display: block; }
+.loc-chip:not(.home) { padding-left: 20px; }
 /* The location chip and, to its right, the go-home button. */
 .loc-wrap { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .loc-wrap .loc-chip { flex: 1; }
@@ -131,11 +142,6 @@ body:not(.started) .labels { opacity: 0; }
 /* Calm View's copy sits in the top-right corner, level with Back to Globe. */
 #calm-music { position: absolute; z-index: 2; top: calc(12px + env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); text-shadow: none; }
 
-.away {
-  position: fixed; z-index: 9; top: 76px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 16px; border-radius: 999px; font-size: 13px;
-}
-.away[hidden] { display: none; }
 
 /* ---------- stage & panel ---------- */
 .stage {
@@ -212,7 +218,7 @@ body[data-view="globe"] .stage, body[data-view="region"] .stage { align-items: f
   transition: opacity 0.7s ease, visibility 0.7s;
 }
 body.started .intro { opacity: 0; visibility: hidden; pointer-events: none; }
-body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock, body:not(.started) .ticker, body:not(.started) .away { opacity: 0; pointer-events: none; }
+body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock, body:not(.started) .ticker { opacity: 0; pointer-events: none; }
 .topbar, .stage, .dock, .ticker { transition: opacity 0.35s ease, transform 0.35s ease; }
 .intro-card { display: flex; flex-direction: column; align-items: center; gap: 26px; text-align: center; margin-top: 34vh; }
 .intro-logo {
@@ -372,6 +378,39 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 .results button:hover, .results button:focus-visible { background: rgba(52, 190, 237, 0.12); }
 .results button span { font-size: 12px; color: var(--ink-soft); }
 
+/* The place on screen, with "Set as home". */
+.loc-current {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 10px 10px 12px;
+  border-radius: 18px; background: rgba(52, 190, 237, 0.09);
+}
+.loc-current svg { flex: none; }
+.loc-current .home-pin, .loc-current.home .pin { display: none; }
+.loc-current.home .home-pin { display: block; }
+.loc-current-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.loc-current-text small { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+.loc-current-text b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loc-current-text span { font-size: 12px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#loc-make-home { flex: none; }
+.loc-is-home {
+  display: none; flex: none; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 800;
+  color: var(--wii-deep); background: rgba(52, 190, 237, 0.16);
+}
+.loc-current.home #loc-make-home { display: none; }
+.loc-current.home .loc-is-home { display: inline-block; }
+
+/* Phones: the location dialog sits near the top, away from the keyboard, and
+   its results scroll inside it. With a keyboard up it also fits the space
+   that's left (--vv-* from fitToKeyboard() in app.js). */
+#loc-dialog[open] { display: flex; flex-direction: column; }
+#loc-dialog .results { flex: 1; min-height: 0; overflow-y: auto; }
+@media (max-width: 860px) {
+  #loc-dialog { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px - env(safe-area-inset-top)); }
+  #loc-dialog.keyboard { margin-top: calc(var(--vv-top, 0px) + 10px); max-height: calc(var(--vv-height, 100dvh) - 20px); }
+  /* While typing, the results get the room: the current place and the GPS
+     button come back when the keyboard closes. */
+  #loc-dialog.keyboard .loc-current, #loc-dialog.keyboard .geo { display: none; }
+}
+
 .toast {
   position: fixed; z-index: 50; left: 50%; bottom: 130px; transform: translate(-50%, 20px); opacity: 0;
   padding: 10px 18px; border-radius: 999px; background: rgba(12, 24, 46, 0.9); color: #fff; font-size: 14px; font-weight: 700;
@@ -403,8 +442,6 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
   .top-actions { grid-column: 2; grid-row: 1; }
   .loc-wrap { grid-column: 1 / -1; grid-row: 2; }
   .loc-chip { min-width: 0; }
-  /* Just under the top bar, over the globe rather than the forecast window. */
-  .away { top: calc(var(--topbar-bottom, 120px) + 8px); max-width: calc(100vw - 32px); flex-wrap: wrap; justify-content: center; border-radius: 22px; padding: 8px 12px; }
   .stage { padding: 8px 16px; align-items: flex-end; top: 36vh; }
   .page-arrow { display: none; }
   .panel { width: 100%; }
@@ -478,7 +515,7 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 body[data-view="globe"] .explore-btn, body[data-view="region"] .explore-btn { display: inline-flex; }
 body[data-view="globe"] .panel-head, body[data-view="region"] .panel-head { align-items: center; flex-wrap: nowrap; }
 
-body.explore .topbar, body.explore .away { opacity: 0; transform: translateY(-16px); pointer-events: none; }
+body.explore .topbar { opacity: 0; transform: translateY(-16px); pointer-events: none; }
 body.explore .stage { opacity: 0; transform: translateY(24px); pointer-events: none; }
 body.explore .stage > * { pointer-events: none; }
 body.explore .dock, body.explore .ticker { opacity: 0; transform: translateY(24px); pointer-events: none; }
@@ -552,7 +589,6 @@ body.explore .dock { transform: translate(-50%, 24px); }
 /* Scales the windows only. The globe, its city labels and the pick card
    stay full size, so the smaller UI simply reveals more of the Earth. */
 body[data-scale="1x"] .topbar,
-body[data-scale="1x"] .away,
 body[data-scale="1x"] .stage,
 body[data-scale="1x"] .dock,
 body[data-scale="1x"] .ticker,
@@ -767,7 +803,7 @@ body.has-timeline { --bottom: 172px; }
    hourly strip fade into the sky at their edges instead of being cut off. */
 .calm-open-btn { width: 100%; margin-top: 12px; padding: 14px 20px; font-size: 15px; }
 .calm {
-  position: fixed; inset: 0; z-index: 35; color: #fff; background: #1b3a66;
+  position: fixed; inset: 0; min-height: 100lvh; z-index: 35; color: #fff; background: #1b3a66;
   opacity: 0; transition: opacity 0.45s ease;
   text-shadow: 0 1px 14px rgba(0, 12, 35, 0.35);
 }

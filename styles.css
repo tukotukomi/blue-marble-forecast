@@ -412,7 +412,10 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 /* The location dialog's results scroll inside it. On phones it sits near the
    top, away from the keyboard. */
 #loc-dialog[open] { display: flex; flex-direction: column; }
-#loc-dialog .results { flex: 1; min-height: 0; overflow-y: auto; }
+/* flex-basis auto, not the 0% that "flex: 1" sets: Safari keeps a 0%-basis
+   item at zero height in a column whose height isn't fixed, which hid every
+   result (and the hint) on iPhones. */
+#loc-dialog .results { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 @media (max-width: 860px) {
   #loc-dialog { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px - env(safe-area-inset-top)); }
 }

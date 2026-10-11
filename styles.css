@@ -955,3 +955,31 @@ body.has-timeline { --bottom: 172px; }
   .calm-days li { grid-template-columns: 52px 40px 40px 1fr 40px; gap: 8px; font-size: 16px; }
   .calm-details { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- feedback form ---------- */
+.fb-type { margin-bottom: 12px; }
+/* 16px text: iOS zooms the page into smaller inputs. */
+#fb-message, #fb-email {
+  width: 100%; padding: 12px 16px; border: 2px solid #d5e4f0; font: inherit; font-size: 16px;
+  color: var(--ink); background: #fff; outline: none;
+}
+#fb-message { min-height: 120px; resize: vertical; border-radius: 18px; display: block; }
+#fb-email { border-radius: 999px; margin-top: 10px; }
+#fb-message:focus, #fb-email:focus { border-color: var(--wii); }
+.fb-shot { margin-top: 10px; }
+/* The real file input covers the button (some phones won't open a picker for
+   a hidden one), invisibly. */
+.fb-shot-add { position: relative; overflow: hidden; cursor: pointer; }
+.fb-shot-add input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.fb-shot-chosen { display: none; align-items: center; gap: 12px; }
+#feedback-dialog.has-shot .fb-shot-add { display: none; }
+#feedback-dialog.has-shot .fb-shot-chosen { display: flex; }
+#fb-shot-preview { max-width: 160px; max-height: 96px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0, 30, 70, 0.18); }
+.fb-trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.fb-privacy { margin: 10px 2px 12px; }
+.fb-send { width: 100%; }
+.fb-status { min-height: 1.3em; margin: 8px 0 0; font-size: 13px; color: var(--ink-soft); text-align: center; }
+.fb-status.error { color: #c2272d; font-weight: 700; }
+@media (max-width: 860px) {
+  #feedback-dialog { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px - env(safe-area-inset-top)); }
+}

@@ -199,6 +199,15 @@
         </div>
       </div>
     </section>
+    <section class="setting" aria-labelledby="feedback-label">
+      <div class="setting-row">
+        <div>
+          <h3 id="feedback-label" data-i18n="feedback.settingsTitle">Feedback</h3>
+          <p class="fine" data-i18n="feedback.settingsBody">Found a bug or have an idea? Tell us. No account needed.</p>
+        </div>
+        <button id="feedback-open" class="pill small" type="button" data-i18n="feedback.title">Send feedback</button>
+      </div>
+    </section>
     <section class="setting sources" aria-labelledby="sources-label">
       <h3 id="sources-label" data-i18n="sources.title">Data sources</h3>
       <p class="fine" data-i18n="sources.hint"></p>
@@ -226,6 +235,30 @@
     <p data-i18n="about.notes"></p>
     <p class="fine" data-i18n="about.tip"></p>
     </section>
+  </dialog>
+
+  <!-- Send feedback (js/feedback.js): becomes an issue in the private
+       feedback repo via tools/feedback-worker. -->
+  <dialog id="feedback-dialog" class="sheet">
+    <form method="dialog" class="sheet-head"><h2 data-i18n="feedback.title">Send feedback</h2><button class="round" value="close" data-i18n-attr="aria-label:search.close" aria-label="Close">✕</button></form>
+    <div class="seg fb-type" role="group" data-i18n-attr="aria-label:feedback.settingsTitle" aria-label="Feedback">
+      <button type="button" data-fb-type="bug" aria-pressed="true" data-i18n="feedback.bug">Bug</button>
+      <button type="button" data-fb-type="idea" aria-pressed="false" data-i18n="feedback.idea">Idea</button>
+    </div>
+    <textarea id="fb-message" rows="5" maxlength="5000" data-i18n-attr="aria-label:feedback.settingsTitle" aria-label="Feedback"></textarea>
+    <div class="fb-shot">
+      <label class="pill small ghost fb-shot-add"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg><span data-i18n="feedback.addShot">Add screenshot</span><input id="fb-shot-input" type="file" accept="image/*"></label>
+      <div class="fb-shot-chosen">
+        <img id="fb-shot-preview" alt="">
+        <button id="fb-shot-remove" class="pill small ghost" type="button" data-i18n="feedback.removeShot">Remove</button>
+      </div>
+    </div>
+    <input id="fb-email" type="email" autocomplete="email" data-i18n-attr="placeholder:feedback.email;aria-label:feedback.email" placeholder="Email (optional, for a reply)" aria-label="Email (optional, for a reply)">
+    <!-- Left empty by people; bots that fill every field reveal themselves. -->
+    <input id="fb-website" class="fb-trap" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <p class="fine fb-privacy" data-i18n="feedback.privacy"></p>
+    <button id="fb-send" class="pill fb-send" type="button" data-i18n="feedback.send">Send</button>
+    <p id="fb-status" class="fb-status" role="status"></p>
   </dialog>
 
   <button id="explore-exit" class="explore-exit glass" type="button" hidden>

@@ -61,6 +61,21 @@ Then set `RELAY_URL` in `js/opera.js` to the Worker's URL (ending in `/`).
 
 GitHub Pages serves the `main` branch at the domain in `CNAME`.
 
+## Feedback
+
+Settings > Feedback opens a form (`js/feedback.js`) for bug reports and ideas, with an
+optional screenshot. No account is needed. `tools/feedback-worker/` is a Cloudflare
+Worker that files each report as an issue in the private repo
+`tukotukomi/blue-marble-feedback` (screenshots are stored there too), with the build,
+device and screen attached. Its GitHub token (Issues and Contents, that repo only)
+is a Worker secret:
+
+```
+cd tools/feedback-worker
+npx wrangler secret put GITHUB_TOKEN
+npx wrangler deploy
+```
+
 ## Version number
 
 The start screen shows the version and build (`js/version.js`). A git hook

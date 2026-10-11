@@ -1,0 +1,10 @@
+# Cloudflare Worker config for the feedback form (see worker.js).
+# From this folder, once:  npx wrangler secret put GITHUB_TOKEN
+# Then (and after any change):  npx wrangler deploy
+name = "blue-marble-feedback"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+# The private repo where reports become issues (screenshots are stored there too).
+REPO = "tukotukomi/blue-marble-feedback"

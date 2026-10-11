@@ -6,6 +6,7 @@ import { initGamepad } from './gamepad.js';
 import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createCalmSky } from './calm.js';
 import { VERSION, BUILD } from './version.js';
+import { initFeedback } from './feedback.js';
 import { createGlobe } from './globe.js';
 import { setMusic, blip, unlock } from './audio.js';
 import { LANGUAGES, detectLang, setLang, getLang, locale, searchLang, t, applyStatic } from './i18n.js';
@@ -1366,6 +1367,26 @@ function renderCalm() {
     </section>`;
 }
 
+// ---------- feedback ----------
+// "Send feedback" in Settings (js/feedback.js). Each report also carries
+// these details, so a bug says which build, device and screen it came from.
+const feedback = initFeedback({
+  t, toast, blip,
+  details: () => ({
+    Build: `${VERSION} · ${BUILD}`,
+    Device: navigator.userAgent,
+    'App mode': matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Home-screen app' : 'Browser',
+    'Screen size': `${screen.width}×${screen.height} @${+devicePixelRatio.toFixed(2)}x, window ${innerWidth}×${innerHeight}`,
+    Language: getLang(),
+    Screen: state.view + (calm.open ? ' (Calm View)' : ''),
+    Place: placeName(state.viewing),
+    Layers: Object.keys(state.layers).filter(k => state.layers[k]).join(', '),
+    'Reduce motion': matchMedia('(prefers-reduced-motion: reduce)').matches ? 'on' : 'off',
+    Time: new Date().toString(),
+  }),
+});
+$('#feedback-open').addEventListener('click', () => { $('#info-dialog').close(); feedback.open(); });
+
 // ---------- controls ----------
 $('#units').addEventListener('click', () => {
   state.units = state.units === 'F' ? 'C' : 'F';
@@ -1573,6 +1594,7 @@ $('#explore-exit').addEventListener('click', () => { blip('select'); setExplore(
 
 // Re-render every piece of text after a language change.
 function applyLanguage() {
+  feedback.retranslate();
   $('#version').textContent = t('app.version', { v: VERSION, b: BUILD });
   renderLangButton();
   renderInstall();

@@ -126,12 +126,19 @@ let pickCard = null;
 let safe = { top: 0, bottom: 0 };
 function measureSafe() {
   if (document.body.classList.contains('explore')) { safe = { top: 0, bottom: 0 }; return; }
-  const dockTop = innerHeight - $('#dock').getBoundingClientRect().top;
-  document.documentElement.style.setProperty('--dock-top', `${dockTop}px`);
+  const dock = $('#dock').getBoundingClientRect(), root = document.documentElement.style;
+  const dockTop = innerHeight - dock.top;
+  // The timeline lines up with the dock's edges (styles.css).
+  root.setProperty('--dock-top', `${dockTop}px`);
+  root.setProperty('--dock-left', `${dock.left}px`);
+  root.setProperty('--dock-width', `${dock.width}px`);
   const timeline = $('#timeline').hidden ? 0 : 24;
   safe = { top: $('.topbar').getBoundingClientRect().bottom, bottom: dockTop + timeline };
 }
-addEventListener('resize', measureSafe);
+// Again once the dock has finished moving (its position animates between the
+// phone and desktop layouts, e.g. when a phone rotates).
+let resizeTimer;
+addEventListener('resize', () => { measureSafe(); clearTimeout(resizeTimer); resizeTimer = setTimeout(measureSafe, 400); });
 
 function closePick() { pickCard?.remove(); pickCard = null; }
 
@@ -829,20 +836,19 @@ function onLayerFrame(name, idx) {
 
 // ---------- timeline (above the dock) ----------
 // A slim bar for the span the animation covers: the earliest time on the
-// left, the latest on the right, and a dot at the moment on screen. It
-// follows the shared observation clock (radar and satellite rain), or the
-// forecast when that's the only loop switched on.
+// left, the latest on the right, and a dot gliding along at the moment on
+// screen, with that time in the middle. It follows the shared observation
+// clock (radar and satellite rain), or the forecast when that's the only
+// loop switched on. Redrawn every frame while shown, so the dot moves
+// smoothly between radar steps.
 function timelineSpan() {
-  const obs = globe?.clock();
-  if (obs) return obs;
-  const a = anim.fcst;
-  if (!isOn('fcst') || a.frames.length < 2 || a.idx < 0) return null;
-  return { start: +a.frames[0].time, end: +a.frames.at(-1).time, now: +a.frames[a.idx].time };
+  return globe?.clock() ?? (isOn('fcst') ? globe?.forecastClock() : null) ?? null;
 }
-let timelineP = 0;
+const timelineText = { start: '', end: '', now: '', p: -1 };
+let timelineRaf = 0;
 function renderTimeline() {
   const el = $('#timeline'), span = timelineSpan();
-  const show = !!span && span.end > span.start;
+  const show = !!span && span.end > span.start && span.now != null;
   if (el.hidden === show) {
     el.hidden = !show;
     document.body.classList.toggle('has-timeline', show);
@@ -850,13 +856,13 @@ function renderTimeline() {
   }
   if (!show) return;
   const fmt = new Intl.DateTimeFormat(locale(), { hour: 'numeric', minute: '2-digit', hour12: use12h() });
-  $('#tl-start').textContent = fmt.format(span.start);
-  $('#tl-end').textContent = fmt.format(span.end);
-  const p = Math.max(0, Math.min(1, (span.now - span.start) / (span.end - span.start)));
-  // Glide forward with the crossfade; jump straight back when the loop restarts.
-  el.classList.toggle('jump', p < timelineP);
-  el.style.setProperty('--p', p);
-  timelineP = p;
+  const set = (key, value, write) => { if (timelineText[key] !== value) { timelineText[key] = value; write(value); } };
+  set('start', fmt.format(span.start), v => { $('#tl-start').textContent = v; });
+  set('end', fmt.format(span.end), v => { $('#tl-end').textContent = v; });
+  set('now', fmt.format(span.now), v => { $('#tl-now').textContent = v; });
+  const p = Math.round(Math.max(0, Math.min(1, (span.now - span.start) / (span.end - span.start))) * 2000) / 2000;
+  set('p', p, v => el.style.setProperty('--p', v));
+  if (!timelineRaf) timelineRaf = requestAnimationFrame(() => { timelineRaf = 0; renderTimeline(); });
 }
 
 function layersHTML() {
@@ -1259,6 +1265,7 @@ function applyLanguage() {
   renderTop();
   render(false);
   renderTicker();
+  Object.assign(timelineText, { start: '', end: '', now: '' });
   renderTimeline();
   globe?.refreshLabels();
   if (state.started) requestAnimationFrame(measureSafe);

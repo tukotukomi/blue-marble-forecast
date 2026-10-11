@@ -835,7 +835,12 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     sunInfo: () => astro(),
     // The shared observation clock: its window and the time on screen (ms).
     clock: () => (sync.step >= 0 && sync.steps.length > 1
-      ? { start: sync.steps[0], end: sync.steps.at(-1), now: sync.steps[sync.step] } : null),
+      ? { start: sync.steps[0], end: sync.steps.at(-1), now: sync.position() } : null),
+    // The same for the forecast's own loop.
+    forecastClock() {
+      const f = anims.fcst.frames;
+      return f.length > 1 && anims.fcst.idx >= 0 ? { start: +f[0].time, end: +f.at(-1).time, now: anims.fcst.position() } : null;
+    },
     // Controller input (gamepad.js): spin by screen pixels like a drag, zoom
     // by a factor, and "tap" a screen point.
     pan(dx, dy) {

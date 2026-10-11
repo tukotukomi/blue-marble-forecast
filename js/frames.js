@@ -83,6 +83,7 @@ export class FrameLayer {
     this.bIdx = -1;          // frame loaded (or loading) into texB
     this.bReady = false;
     this.wait = 0;
+    this.elapsed = 0;        // ms since this frame came on screen (see position)
     this.playing = true;
     this.blobs = new Map();  // remote url -> Promise<object URL>
     this.token = 0;
@@ -180,6 +181,17 @@ export class FrameLayer {
     return (await toBitmap(canvas)) ?? canvas;
   }
 
+  // The time on screen (ms), gliding toward the next frame instead of jumping:
+  // the share of this frame's rest and crossfade already done. It holds on the
+  // newest frame, and short of the next one until that has arrived.
+  position() {
+    const f = this.frames[this.idx];
+    if (!f) return null;
+    const next = this.frames[this.idx + 1];
+    if (!next) return +f.time;
+    return +f.time + (next.time - f.time) * Math.min(0.97, this.elapsed / (HOLD + FADE));
+  }
+
   async seek(i) {
     const token = ++this.token;
     const img = await this.decode(i);
@@ -189,6 +201,7 @@ export class FrameLayer {
     if (this.pendingBox) { this.box = this.pendingBox; this.pendingBox = null; }
     this.idx = i;
     this.mix = 0;
+    this.elapsed = 0;
     this.bIdx = -1;
     this.bReady = false;
     this.wait = i === this.frames.length - 1 ? HOLD_END : HOLD;
@@ -229,6 +242,7 @@ export class FrameLayer {
     [this.texA, this.texB] = [this.texB, this.texA];
     this.idx = this.bIdx;
     this.mix = 0;
+    this.elapsed = 0;
     this.bIdx = -1;
     this.bReady = false;
     this.onFrame?.(this.idx, this.frames.length, this.frames[this.idx].time);
@@ -238,6 +252,7 @@ export class FrameLayer {
   // Layers in a FrameSync are driven by it instead.
   tick(dt) {
     if (this.sync || !this.playing || this.frames.length < 2 || this.idx < 0) return false;
+    this.elapsed += dt;
     if (!this.bReady) this.loadNext(); // decode the next frame while this one rests
     if (this.wait > 0) { this.wait -= dt; return false; }
     if (!this.bReady) return false;
@@ -271,6 +286,7 @@ export class FrameSync {
     this.wait = 0;
     this.mix = 0;
     this.stall = 0;
+    this.elapsed = 0; // ms since this step came on screen (see position)
     this.playing = true;
     for (const [, l] of this.layers) l.sync = this;
   }
@@ -306,7 +322,18 @@ export class FrameSync {
     for (const l of m) if (l.frameAt(t) !== l.idx) l.seek(l.frameAt(t));
     this.mix = 0;
     this.stall = 0;
+    this.elapsed = 0;
     this.wait = this.step === this.steps.length - 1 ? HOLD_END : HOLD;
+  }
+
+  // The clock's time (ms), gliding toward the next step like
+  // FrameLayer.position, so the timeline moves smoothly.
+  position() {
+    const t = this.steps[this.step];
+    if (t == null) return null;
+    const next = this.steps[this.step + 1];
+    if (next == null) return t;
+    return t + (next - t) * Math.min(0.97, this.elapsed / (HOLD + FADE));
   }
 
   // A timeline slider moved: jump every layer to that frame's time.
@@ -321,6 +348,7 @@ export class FrameSync {
     if (!this.playing || this.steps.length < 2) return false;
     const m = this.members();
     if (!m.length) return false;
+    this.elapsed += dt;
     const next = (this.step + 1) % this.steps.length;
     const t = this.steps[next];
     const moving = m.filter(l => l.frameAt(t) !== l.idx);
@@ -339,6 +367,7 @@ export class FrameSync {
       this.step = next;
       this.mix = 0;
       this.stall = 0;
+      this.elapsed = 0;
       this.wait = next === this.steps.length - 1 ? HOLD_END : HOLD;
     }
     return go.length > 0;

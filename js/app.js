@@ -972,6 +972,7 @@ const searchHint = msg => `<li class="muted">${esc(msg)}</li>`;
 function openSearch() {
   blip('select');
   $('#loc-q').value = '';
+  $('#loc-home').checked = false; // a search only changes home when asked to
   $('#loc-results').innerHTML = searchHint(t('search.prompt'));
   renderLocCurrent();
   dlg.showModal();

@@ -23,13 +23,16 @@
        three.js, which would otherwise only be found two imports deep. -->
   <link rel="preload" as="image" href="img/earth-day-1024.jpg" crossorigin>
   <link rel="preload" as="image" href="img/earth-night-1024.jpg" crossorigin>
-  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js" crossorigin>
+  <!-- The import map has to come before the module preload: Firefox ignores
+       an import map once any module has started loading, and then nothing
+       can find "three". -->
   <script type="importmap">
     { "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
     } }
   </script>
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js" crossorigin>
   <script type="module" src="js/app.js"></script>
 </head>
 <!-- All visible text comes from strings/*.json via data-i18n keys (see js/i18n.js);

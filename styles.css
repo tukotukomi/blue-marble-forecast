@@ -422,13 +422,14 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 /* With an on-screen keyboard up (phones and tablets), it fits the space that's
    left: --kb-shift is the measured correction that puts its top 10px below the
    status bar in the visible area, --vv-height that area's height (both from
-   fitToKeyboard() in app.js). While typing, the results get the room: the
-   current place and the GPS button come back when the keyboard closes. */
+   fitToKeyboard() in app.js). While typing, the GPS button steps aside to give
+   the results room (it comes back when the keyboard closes); the current place
+   and Set as home stay. */
 #loc-dialog.keyboard {
   margin: calc(12px + env(safe-area-inset-top) + var(--kb-shift, 0px)) auto auto;
   max-height: calc(var(--vv-height, 100dvh) - 20px - env(safe-area-inset-top));
 }
-#loc-dialog.keyboard .loc-current, #loc-dialog.keyboard .geo { display: none; }
+#loc-dialog.keyboard .geo { display: none; }
 
 .toast {
   position: fixed; z-index: 50; left: 50%; bottom: 130px; transform: translate(-50%, 20px); opacity: 0;

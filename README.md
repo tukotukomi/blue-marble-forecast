@@ -2,7 +2,7 @@
 
 A modern, unofficial remake of the Wii Forecast Channel (2006–2013): a spinning
 NASA globe with local and world forecasts, live radar, animated rain, UV index,
-laundry check and pollen counts. Not affiliated with or endorsed by Nintendo.
+laundry check and a My Places list of saved cities. Not affiliated with or endorsed by Nintendo.
 
 **Live:** https://bluemarbleforecast.com
 
@@ -20,7 +20,6 @@ All free and public, mostly from government science agencies:
 | Globe imagery | NASA Blue Marble, Black Marble and GPM IMERG (NASA GIBS) |
 | High resolution radar | Environment and Climate Change Canada (North America), DWD (Germany), EUMETNET OPERA (Europe) |
 | 12-hour forecast rain | NOAA HRRR via the Iowa Environmental Mesonet (U.S.), DWD ICON-EU (Europe), NOAA GFS (elsewhere) |
-| Pollen | Copernicus Atmosphere Monitoring Service (Europe) |
 | Cities and borders | Natural Earth populated places, country and state/province lines |
 
 The in-app About panel (Settings) has the full credits.

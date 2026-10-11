@@ -715,8 +715,10 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   resize();
 
   let lastNow = performance.now();
+  let suspended = false; // Calm View covers the globe: skip all drawing
   function frame(now) {
     requestAnimationFrame(frame);
+    if (suspended) { lastNow = now; return; }
     // Motion is time-based so speed is the same at 60, 120 or a choppy 40 fps.
     const dt = Math.min(now - lastNow, 100);
     const f = dt / (1000 / 60);
@@ -833,6 +835,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       sync.seekTime(+layer.frames[i].time);
     },
     sunInfo: () => astro(),
+    suspend(on) { suspended = on; if (!on) invalidate(); },
     // The shared observation clock: its window and the time on screen (ms).
     clock: () => (sync.step >= 0 && sync.steps.length > 1
       ? { start: sync.steps[0], end: sync.steps.at(-1), now: sync.position() } : null),

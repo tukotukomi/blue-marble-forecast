@@ -4,7 +4,6 @@
 //    served as JSON by Open-Meteo with `models=gfs_seamless` so every number on
 //    the site comes from the same NOAA model run, worldwide.
 //  - api.weather.gov  - official NWS forecast text + active alerts (U.S. only).
-//  - Copernicus CAMS  - European pollen forecast (EU Earth-observation service).
 //  - NASA GIBS        - Blue Marble, Black Marble and IMERG imagery (see globe.js).
 //  - NOAA nowCOAST    - live U.S. weather-radar mosaic.
 //  - GeoNames         - place-name search (via Open-Meteo's geocoder).
@@ -52,14 +51,6 @@ export async function fetchCities(cities) {
   const data = await getJSON(`${OM}?${p}`, { cacheKey: key, ttlMin: 30 });
   const list = Array.isArray(data) ? data : [data];
   return cities.map((c, i) => ({ ...c, wx: list[i] }));
-}
-
-export async function fetchPollen(lat, lon) {
-  const p = new URLSearchParams({
-    latitude: r2(lat), longitude: r2(lon), timezone: 'auto', forecast_days: 4,
-    hourly: 'alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen',
-  });
-  return getJSON(`https://air-quality-api.open-meteo.com/v1/air-quality?${p}`);
 }
 
 export async function searchPlaces(q, language = 'en') {

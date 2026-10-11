@@ -328,20 +328,7 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 .mini-day .day-name { color: var(--ink); font-size: 14px; }
 .mini-day small { display: block; font-size: 11px; font-weight: 700; line-height: 1.2; }
 
-.pollen-hero { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 18px; border-radius: 18px; background: rgba(255, 255, 255, 0.75); margin-bottom: 12px; }
-.pollen-hero b { font-size: 28px; }
-.pollen-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; font-size: 14px; }
-.pollen-table th { text-align: left; font-weight: 800; }
-.pollen-table thead th { font-size: 12px; color: var(--ink-soft); text-align: center; }
-.pollen-table thead th:first-child { text-align: left; }
-.pollen-table td { text-align: center; }
-.chip { display: inline-block; min-width: 76px; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #edf1f6; color: var(--ink-soft); }
 .lvl-0 { background: #e8f6ea; color: #2e7d3a; }
-.chip.lvl-1, .pollen-hero.lvl-1 b { color: #2e9e3c; } .chip.lvl-1 { background: #dff5e2; }
-.chip.lvl-2, .pollen-hero.lvl-2 b { color: #a07c00; } .chip.lvl-2 { background: #fff3c4; }
-.chip.lvl-3, .pollen-hero.lvl-3 b { color: #c56a00; } .chip.lvl-3 { background: #ffe1bf; }
-.chip.lvl-4, .pollen-hero.lvl-4 b { color: #c2272d; } .chip.lvl-4 { background: #ffd6d6; }
-.pollen-hero.lvl-0 { background: rgba(255, 255, 255, 0.75); }
 
 .toggles { display: grid; gap: 10px; margin: 6px 0 4px; }
 .switch { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
@@ -414,7 +401,8 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
   .top-actions { grid-column: 2; grid-row: 1; }
   .loc-wrap { grid-column: 1 / -1; grid-row: 2; }
   .loc-chip { min-width: 0; }
-  .away { top: auto; bottom: 138px; max-width: calc(100vw - 32px); flex-wrap: wrap; justify-content: center; border-radius: 22px; padding: 8px 12px; }
+  /* Just under the top bar, over the globe rather than the forecast window. */
+  .away { top: calc(var(--topbar-bottom, 120px) + 8px); max-width: calc(100vw - 32px); flex-wrap: wrap; justify-content: center; border-radius: 22px; padding: 8px 12px; }
   .stage { padding: 8px 16px; align-items: flex-end; top: 36vh; }
   .page-arrow { display: none; }
   .panel { width: 100%; }
@@ -725,4 +713,126 @@ body:not(.started) .timeline, body.explore .timeline { opacity: 0; }
 body.has-timeline { --bottom: 172px; }
 @media (max-width: 860px) {
   body.has-timeline { --bottom: 154px; }
+}
+
+/* ---------- My Places ---------- */
+/* The star by the location chip: outlined, or filled gold once saved. */
+#star-btn { flex: none; width: 46px; height: 46px; color: var(--ink-soft); }
+#star-btn path { fill: none; }
+#star-btn.on { color: #f5b301; }
+#star-btn.on path { fill: currentColor; }
+
+/* A phone-style list: one rounded row per place. */
+.places { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.place {
+  display: flex; align-items: stretch; border-radius: 18px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(236, 245, 252, 0.84));
+  box-shadow: inset 0 0 0 1px rgba(34, 50, 74, 0.06);
+}
+.place.here { box-shadow: inset 0 0 0 2px var(--wii); }
+.place-open {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px 4px 10px 12px;
+  border: 0; background: none; text-align: left; transition: background 0.15s;
+}
+.place-open:hover { background: rgba(52, 190, 237, 0.08); }
+.place-icon { flex: none; width: 44px; height: 44px; display: grid; place-items: center; }
+.place-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.2; }
+.place-text b, .place-text small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.place-text b { font-size: 16px; font-weight: 800; }
+.place-text small { font-size: 12px; color: var(--ink-soft); }
+.place-tag {
+  font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--wii-deep); background: rgba(52, 190, 237, 0.15); padding: 1px 7px; border-radius: 999px; margin-left: 4px; vertical-align: 2px;
+}
+.place-temps { flex: none; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+.place-temps b { font-size: 24px; font-weight: 800; }
+.place-temps small { font-size: 12px; font-weight: 800; }
+.place-temps .hi { color: var(--hi); }
+.place-temps .lo { color: var(--lo); }
+.place-star { flex: none; width: 44px; border: 0; background: none; color: #f5b301; display: grid; place-items: center; transition: background 0.15s; }
+.place-star:hover { background: rgba(245, 179, 1, 0.12); }
+.places-empty .star { color: #f5b301; }
+@media (max-width: 860px) {
+  .place-open { gap: 10px; padding: 8px 2px 8px 10px; }
+  .place-icon, .place-icon svg { width: 38px; height: 38px; }
+  .place-temps b { font-size: 21px; }
+  .place-star { width: 40px; }
+}
+
+/* ---------- Calm View ---------- */
+/* The forecast laid straight onto an animated sky: no panels or borders.
+   Dividers are hairlines that fade out at both ends, and the page and the
+   hourly strip fade into the sky at their edges instead of being cut off. */
+.calm-open-btn { width: 100%; margin-top: 12px; padding: 14px 20px; font-size: 15px; }
+.calm {
+  position: fixed; inset: 0; z-index: 35; color: #fff; background: #1b3a66;
+  opacity: 0; transition: opacity 0.45s ease;
+  text-shadow: 0 1px 14px rgba(0, 12, 35, 0.35);
+}
+.calm.open { opacity: 1; }
+.calm[hidden] { display: none; }
+.calm-sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.calm-back {
+  position: absolute; z-index: 2; top: calc(14px + env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left));
+  display: inline-flex; align-items: center; gap: 4px; padding: 9px 16px 9px 10px; border: 0; border-radius: 999px;
+  color: #fff; font-weight: 800; font-size: 14px; background: rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); transition: background 0.15s;
+}
+.calm-back:hover { background: rgba(255, 255, 255, 0.24); }
+.calm-body {
+  position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+  padding: calc(76px + env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) calc(48px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 64px, #000 calc(100% - 56px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 64px, #000 calc(100% - 56px), transparent 100%);
+}
+.calm-body::-webkit-scrollbar { display: none; }
+.calm-body > * { max-width: 560px; margin-left: auto; margin-right: auto; }
+
+.calm-hero { text-align: center; padding: 12px 0 28px; }
+.calm-hero h2 { font-size: 24px; font-weight: 700; letter-spacing: 0.01em; margin: 0; }
+.calm-temp { font-size: clamp(88px, 24vw, 128px); font-weight: 400; line-height: 1; letter-spacing: -0.04em; margin: 4px 0 2px; padding-left: 0.12em; }
+.calm-cond { font-size: 20px; font-weight: 700; margin: 0; }
+.calm-hilo { font-size: 15px; font-weight: 500; margin: 6px 0 0; opacity: 0.88; }
+
+.calm-sec { padding: 18px 0 20px; position: relative; }
+/* A divider that melts away toward both edges. */
+.calm-sec::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4) 20%, rgba(255, 255, 255, 0.4) 80%, transparent);
+}
+.calm-sec h3 { margin: 0 0 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.75; }
+
+.calm-hours {
+  display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 2px 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 28px), transparent 100%);
+}
+.calm-hours::-webkit-scrollbar { display: none; }
+.calm-hour { flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; }
+.calm-hour:first-child { margin-left: 8px; }
+.calm-hour > span { font-weight: 700; opacity: 0.85; }
+.calm-hour b { font-size: 17px; font-weight: 700; }
+.calm-pop { font-size: 11px; font-weight: 800; color: #a9dcff; }
+
+.calm-days { list-style: none; margin: 0; padding: 0; }
+.calm-days li {
+  display: grid; grid-template-columns: 64px 46px 44px 1fr 44px; align-items: center; gap: 10px;
+  padding: 8px 0; font-size: 17px; font-weight: 700; position: relative;
+}
+.calm-days li + li::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18) 25%, rgba(255, 255, 255, 0.18) 75%, transparent);
+}
+.calm-day-icon { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.calm-lo { text-align: right; opacity: 0.7; }
+.calm-hi { text-align: left; }
+.calm-range { position: relative; height: 5px; border-radius: 5px; background: rgba(255, 255, 255, 0.18); }
+.calm-range i { position: absolute; top: 0; bottom: 0; border-radius: 5px; background: linear-gradient(90deg, #8fd0ff, #ffe08a, #ff9d6b); }
+
+.calm-details { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 12px; }
+.calm-details span { display: block; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.72; margin-bottom: 3px; }
+.calm-details b { font-size: 18px; font-weight: 700; }
+@media (max-width: 420px) {
+  .calm-days li { grid-template-columns: 52px 40px 40px 1fr 40px; gap: 8px; font-size: 16px; }
+  .calm-details { grid-template-columns: repeat(2, 1fr); }
 }

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Blue Marble Forecast</title>
-  <meta name="description" content="A modern remake of the Wii Forecast Channel: a spinning NASA globe, local and world forecasts from NOAA, UV index, laundry check and pollen counts.">
+  <meta name="description" content="A modern remake of the Wii Forecast Channel: a spinning NASA globe, local and world forecasts from NOAA, UV index, laundry check and your saved places.">
   <meta name="theme-color" content="#0b1a33">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <!-- Home-screen app: manifest for Android/desktop, apple-* tags for iPhone and iPad. -->
@@ -58,6 +58,10 @@
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" fill="#ff5d6c" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="10" r="2.6" fill="#fff"/></svg>
         <span class="loc-text"><b id="loc-name"></b><small id="loc-sub"></small></span>
         <svg class="chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
+      <!-- Saves or removes this place in My Places. -->
+      <button id="star-btn" class="round glass" type="button" aria-pressed="false" aria-label="Save to My Places" title="Save to My Places">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.83 1.03-6L3.3 9.6l6-.9Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       </button>
       <!-- Flies back to the home location (and shows its forecast). -->
       <button id="home-btn" class="round glass" type="button" data-i18n-attr="aria-label:top.goHome;title:top.goHome" aria-label="Go to home location" title="Go to home location">
@@ -130,6 +134,17 @@
     <span id="tl-end"></span>
   </div>
   <div class="ticker" data-i18n-attr="aria-label:ticker.label" aria-label="World weather"><div id="ticker" class="ticker-track"></div></div>
+
+  <!-- Calm View: the forecast over an animated sky instead of the globe
+       (js/calm.js draws the sky; app.js fills in the text). -->
+  <section id="calm" class="calm" hidden data-i18n-attr="aria-label:calm.title" aria-label="Calm View">
+    <canvas id="calm-sky" class="calm-sky" aria-hidden="true"></canvas>
+    <button id="calm-back" class="calm-back" type="button">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="calm.back">Back to Globe</span>
+    </button>
+    <div id="calm-body" class="calm-body"></div>
+  </section>
 
   <div id="intro" class="intro">
     <div class="intro-card">

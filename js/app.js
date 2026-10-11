@@ -1,9 +1,10 @@
 import { CITIES } from './cities.js';
 import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js';
-import { fetchForecast, fetchCities, fetchPollen, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchGermanRadar, fetchPlaces } from './data.js';
+import { fetchForecast, fetchCities, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchGermanRadar, fetchPlaces } from './data.js';
 import { fetchForecastRain } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
 import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
+import { createCalmSky } from './calm.js';
 import { createGlobe } from './globe.js';
 import { setMusic, blip, unlock } from './audio.js';
 import { LANGUAGES, detectLang, setLang, getLang, locale, searchLang, t, applyStatic } from './i18n.js';
@@ -57,14 +58,15 @@ const state = {
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',
-  fc: null, nws: null, pollen: null, cities: [],
+  fc: null, nws: null, cities: [],
+  saved: store.get('saved', []), // My Places, in the order they were starred
   started: false,
 };
 // Open where the visitor was looking last time (their home on a first visit).
 state.viewing = store.get('viewing', null) || state.home;
 
 // Dock order; the app still opens on 'now' (see start()).
-const VIEWS = ['globe', 'now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry', 'pollen'];
+const VIEWS = ['globe', 'now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry', 'places'];
 
 const ico = d => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const DOCK_ICONS = {
@@ -75,7 +77,7 @@ const DOCK_ICONS = {
   region: ico('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/>'),
   uv: ico('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/><path d="M12 9a3 3 0 0 0 0 6" fill="currentColor"/>'),
   laundry: ico('<path d="M8 3 3 6l2 4 2-1v12h10V9l2 1 2-4-5-3a3 3 0 0 1-8 0Z"/>'),
-  pollen: ico('<circle cx="12" cy="9" r="2"/><path d="M12 7a3 3 0 1 1 3 3 3 3 0 1 1-3 3 3 3 0 1 1-3-3 3 3 0 1 1 3-3Z"/><path d="M12 14v7M12 18c-2-2-4-2-5-1M12 17c2-2 4-2 5-1"/>'),
+  places: ico('<path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.83 1.03-6L3.3 9.6l6-.9Z"/>'),
   globe: ico('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
 };
 
@@ -133,7 +135,9 @@ function measureSafe() {
   root.setProperty('--dock-left', `${dock.left}px`);
   root.setProperty('--dock-width', `${dock.width}px`);
   const timeline = $('#timeline').hidden ? 0 : 24;
-  safe = { top: $('.topbar').getBoundingClientRect().bottom, bottom: dockTop + timeline };
+  const topbar = $('.topbar').getBoundingClientRect().bottom;
+  root.setProperty('--topbar-bottom', `${topbar}px`); // phones put the "viewing away" bar under it
+  safe = { top: topbar, bottom: dockTop + timeline };
 }
 // Again once the dock has finished moving (its position animates between the
 // phone and desktop layouts, e.g. when a phone rotates).
@@ -261,7 +265,7 @@ let loadToken = 0;
 async function loadLocation() {
   const token = ++loadToken;
   const v = state.viewing;
-  state.nws = null; state.pollen = null;
+  state.nws = null;
   setStatus('loading');
   renderTop();
   try {
@@ -326,6 +330,7 @@ function renderTop() {
   const away = !sameLoc(v, state.home);
   $('#away').hidden = !away;
   if (away) $('#away-text').innerHTML = esc(t('away.text', { home: '\u0000' })).replace('\u0000', `<b>${esc(placeName(state.home))}</b>`);
+  syncStar();
   tick();
 }
 
@@ -364,7 +369,7 @@ function tickerFrame(now) {
   requestAnimationFrame(tickerFrame);
   const dt = Math.min(now - ticker.last, 100);
   ticker.last = now;
-  if (ticker.paused || !ticker.runW) return;
+  if (ticker.paused || !ticker.runW || calm.open) return;
   ticker.x = (ticker.x + ticker.speed * dt / 1000) % ticker.runW;
   $('#ticker').style.transform = `translate3d(${-ticker.x.toFixed(2)}px, 0, 0)`;
 }
@@ -421,6 +426,7 @@ function step(dir) {
 
 let swapTimer;
 function render(animate) {
+  renderCalm();
   $('#panel-title').textContent = t(`view.${state.view}.title`);
   const panel = $('#panel');
   const draw = () => {
@@ -529,16 +535,6 @@ function clothesline(level, size = 220) {
     <path d="M2 22 Q105 32 208 22" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".5"/>${shirts}</svg>`;
 }
 
-const POLLEN = [
-  { k: 'grass_pollen', id: 'grass', lv: [5, 30, 100] },
-  { k: 'birch_pollen', id: 'birch', lv: [10, 100, 300] },
-  { k: 'alder_pollen', id: 'alder', lv: [10, 100, 300] },
-  { k: 'olive_pollen', id: 'olive', lv: [10, 100, 300] },
-  { k: 'mugwort_pollen', id: 'mugwort', lv: [5, 20, 50] },
-  { k: 'ragweed_pollen', id: 'ragweed', lv: [5, 20, 50] },
-];
-const pollenLevel = (v, lv) => v == null ? -1 : v < 1 ? 0 : v <= lv[0] ? 1 : v <= lv[1] ? 2 : v <= lv[2] ? 3 : 4;
-
 const RENDER = {
   now() {
     const fc = state.fc, c = fc.current, d = dayRow(fc, 0);
@@ -641,28 +637,26 @@ const RENDER = {
       <p class="fine">${esc(t('laundry.note'))}</p>
     </div>`;
   },
-  pollen() {
-    const p = state.pollen;
-    if (p === null) return `<div class="empty">${iconSVG('partly-day', { size: 90 })}<p>${esc(t('pollen.loading'))}</p></div>`;
-    if (p === 'error') return `<div class="empty"><p>${esc(t('pollen.error'))}</p></div>`;
-    const days = p.days;
-    const rows = POLLEN.map(r => ({ ...r, vals: days.map(d => d[r.k]) })).filter(r => r.vals.some(v => v != null));
-    if (!rows.length) {
-      return `<div class="empty">
-        ${iconSVG('partly-day', { size: 96 })}
-        <h3>${esc(t('pollen.unavailableTitle'))}</h3>
-        <p>${esc(t('pollen.unavailableBody'))}</p>
-        <button class="pill small" type="button" id="try-europe">${esc(t('pollen.try', { city: cityName(cityByName('Paris')) }))}</button></div>`;
+  // A phone-style list of the starred places: weather icon, name, local
+  // time and region, the temperature now and today's high and low.
+  places() {
+    if (!state.saved.length) {
+      return `<div class="empty places-empty">${starIcon(true, 56)}<h3>${esc(t('places.emptyTitle'))}</h3><p>${esc(t('places.emptyBody'))}</p></div>${calmButton()}`;
     }
-    const top = Math.max(...rows.map(r => pollenLevel(r.vals[0], r.lv)));
-    return `<div class="pollen">
-      <div class="pollen-hero lvl-${top}"><span>${esc(t('pollen.today'))}</span><b>${esc(t(`pollen.cat.${Math.max(0, top)}`))}</b></div>
-      <table class="pollen-table"><thead><tr><th scope="col">${esc(t('pollen.type'))}</th>${days.map(d => `<th scope="col">${esc(dayName(d.date, 'short'))}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(r => `<tr><th scope="row">${esc(t(`pollen.${r.id}`))}</th>${r.vals.map(v => {
-        const l = pollenLevel(v, r.lv);
-        return `<td><span class="chip lvl-${l}" title="${esc(v == null ? t('pollen.na') : t('pollen.grains', { n: Math.round(v) }))}">${l < 0 ? '–' : esc(t(`pollen.cat.${l}`))}</span></td>`;
-      }).join('')}</tr>`).join('')}</tbody></table>
-      <p class="fine">${esc(t('pollen.note'))}</p></div>`;
+    return `<ul class="places">${state.saved.map((p, i) => {
+      const wx = savedWx.get(placeKey(p)), cur = wx?.current, day = wx?.daily;
+      const now = wx && localNow(wx);
+      const sub = [now && clock(now.getUTCHours(), now.getUTCMinutes(), true), placeLine(p)].filter(Boolean).join(' · ');
+      const home = sameLoc(p, state.home) ? ` <i class="place-tag">${esc(t('places.home'))}</i>` : '';
+      return `<li class="place${sameLoc(p, state.viewing) ? ' here' : ''}">
+        <button class="place-open" type="button" data-i="${i}">
+          <span class="place-icon">${cur ? iconFor(cur.weather_code, !!cur.is_day, { size: 44 }) : ''}</span>
+          <span class="place-text"><b>${esc(placeName(p))}${home}</b><small>${esc(sub)}</small></span>
+          <span class="place-temps">${cur ? `<b>${T(cur.temperature_2m)}</b><small><span class="hi">${T(day.temperature_2m_max[0])}</span> <span class="lo">${T(day.temperature_2m_min[0])}</span></small>` : '<b>–</b>'}</span>
+        </button>
+        <button class="place-star" type="button" data-i="${i}" aria-label="${esc(t('places.remove', { place: placeName(p) }))}">${starIcon(true)}</button>
+      </li>`;
+    }).join('')}</ul>${calmButton()}`;
   },
   globe() {
     const s = globe?.sunInfo();
@@ -683,24 +677,16 @@ const AFTER = {
     }));
     bindLayers();
   },
-  pollen() {
-    if (state.pollen === null) {
-      const v = state.viewing, token = loadToken;
-      fetchPollen(v.lat, v.lon).then(raw => {
-        if (token !== loadToken) return;
-        const byDay = {};
-        raw.hourly.time.forEach((time, i) => {
-          const d = time.slice(0, 10);
-          byDay[d] ??= { date: d };
-          for (const { k } of POLLEN) {
-            const val = raw.hourly[k]?.[i];
-            if (val != null) byDay[d][k] = Math.max(byDay[d][k] ?? 0, val);
-          }
-        });
-        state.pollen = { days: Object.values(byDay).slice(0, 4) };
-      }).catch(() => { state.pollen = 'error'; }).finally(() => state.view === 'pollen' && render(false));
-    }
-    $('#try-europe')?.addEventListener('click', () => openCity(cityByName('Paris')));
+  places() {
+    loadSavedWeather();
+    document.querySelectorAll('.place-open').forEach(b => b.addEventListener('click', () => {
+      const p = state.saved[+b.dataset.i];
+      blip('select');
+      if (!sameLoc(p, state.viewing)) openLocation(p);
+      go('now', { sound: false });
+    }));
+    document.querySelectorAll('.place-star').forEach(b => b.addEventListener('click', () => toggleSaved(state.saved[+b.dataset.i])));
+    $('#calm-open')?.addEventListener('click', openCalm);
   },
   globe: () => bindLayers(),
 };
@@ -1045,6 +1031,134 @@ $('#away-home').addEventListener('click', () => {
   renderTop(); toast(t('toast.home', { place: placeName(state.home) }));
 });
 
+// ---------- My Places ----------
+// Places starred with the button beside the location chip, kept on this
+// device. Their weather comes in one request (like the ticker's cities).
+const placeKey = l => `${l.lat.toFixed(2)},${l.lon.toFixed(2)}`;
+const isSaved = l => state.saved.some(p => sameLoc(p, l));
+const starIcon = (filled, size = 20) => `<svg class="star" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.83 1.03-6L3.3 9.6l6-.9Z" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+
+function syncStar() {
+  const on = isSaved(state.viewing), b = $('#star-btn'), label = t(on ? 'places.unsave' : 'places.save');
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+  b.setAttribute('aria-label', label);
+  b.title = label;
+}
+
+function toggleSaved(loc) {
+  const was = isSaved(loc);
+  state.saved = was ? state.saved.filter(p => !sameLoc(p, loc)) : [...state.saved, { ...loc }];
+  store.set('saved', state.saved);
+  blip('select');
+  toast(t(was ? 'places.removed' : 'places.added', { place: placeName(loc) }));
+  syncStar();
+  if (state.view === 'places') render(false);
+}
+$('#star-btn').addEventListener('click', () => toggleSaved(state.viewing));
+
+const savedWx = new Map(); // placeKey -> Open-Meteo current + daily
+let savedWxFor = '', savedWxAt = 0;
+async function loadSavedWeather() {
+  const list = state.saved.map(placeKey).join('|');
+  if (!list || (list === savedWxFor && Date.now() - savedWxAt < 10 * 60e3)) return;
+  savedWxFor = list; savedWxAt = Date.now();
+  try {
+    for (const c of await fetchCities(state.saved)) savedWx.set(placeKey(c), c.wx);
+    if (state.view === 'places') render(false);
+  } catch { savedWxFor = ''; }
+}
+
+// ---------- Calm View ----------
+// A flat, quiet forecast for the place on screen over an animated sky that
+// matches its weather (calm.js), in place of the globe. Opened from My
+// Places; "Back to Globe", Escape or the phone's back gesture return.
+const calm = { el: $('#calm'), sky: null, open: false, weather: '' };
+const calmButton = () => `<button class="pill calm-open-btn" type="button" id="calm-open">${esc(t('calm.open'))}</button>`;
+
+function openCalm() {
+  if (calm.open) return;
+  blip('select');
+  calm.open = true;
+  calm.sky ??= createCalmSky($('#calm-sky'));
+  calm.el.hidden = false;
+  document.body.classList.add('calm-open');
+  calm.sky.start();
+  renderCalm();
+  requestAnimationFrame(() => calm.el.classList.add('open'));
+  setTimeout(() => { if (calm.open) globe?.suspend(true); }, 450); // once it covers the globe
+  // An entry in the history, so the phone's back gesture closes Calm View
+  // instead of leaving the site.
+  history.pushState({ calm: true }, '', location.search + '#calm');
+  $('#calm-back').focus();
+}
+
+function closeCalm(fromHistory = false) {
+  if (!calm.open) return;
+  if (!fromHistory && history.state?.calm) { history.back(); return; } // popstate below finishes
+  calm.open = false;
+  globe?.suspend(false);
+  calm.el.classList.remove('open');
+  document.body.classList.remove('calm-open');
+  setTimeout(() => { if (!calm.open) { calm.el.hidden = true; calm.sky.stop(); } }, 450);
+  history.replaceState(null, '', location.search + '#' + state.view);
+}
+$('#calm-back').addEventListener('click', () => { blip('select'); closeCalm(); });
+addEventListener('popstate', () => { if (calm.open) closeCalm(true); });
+
+function renderCalm() {
+  if (!calm.open) return;
+  const v = state.viewing, fc = state.fc;
+  if (!fc) {
+    $('#calm-body').innerHTML = `<header class="calm-hero"><h2 id="calm-place">${esc(placeName(v))}</h2><p class="calm-cond">${esc(t('loading'))}</p></header>`;
+    return;
+  }
+  const c = fc.current, today = dayRow(fc, 0), desc = describe(c.weather_code, !!c.is_day);
+  // Rebuild the sky only when the weather changes (not on every re-render).
+  const weather = `${c.weather_code}|${c.is_day}`;
+  if (weather !== calm.weather) { calm.weather = weather; calm.sky.setWeather(c.weather_code, c.is_day, c.wind_speed_10m); }
+
+  const nowH = localNow(fc).getUTCHours();
+  const hours = fc.daily.time.slice(0, 3).flatMap(date => hoursFor(fc, date));
+  const at = Math.max(0, hours.findIndex(h => h.hour === nowH));
+  const next = hours.slice(at, at + 25);
+  const uvNow = next[0]?.uv ?? 0;
+
+  const days = fc.daily.time.map((_, i) => dayRow(fc, i));
+  const lo = Math.min(...days.map(d => d.lo)), hi = Math.max(...days.map(d => d.hi)), span = Math.max(1, hi - lo);
+  const pop = p => (p >= 20 ? `<small class="calm-pop">${p}%</small>` : '');
+
+  $('#calm-body').innerHTML = `
+    <header class="calm-hero">
+      <h2 id="calm-place">${esc(placeName(v))}</h2>
+      <div class="calm-temp">${T(c.temperature_2m)}</div>
+      <p class="calm-cond">${esc(desc.label)}</p>
+      <p class="calm-hilo">${esc(t('calm.hilo', { hi: T(today.hi), lo: T(today.lo) }))} · ${esc(t('now.feels', { t: T(c.apparent_temperature) }))}</p>
+    </header>
+    <section class="calm-sec">
+      <h3>${esc(t('calm.hourly'))}</h3>
+      <div class="calm-hours">${next.map((h, i) => `<div class="calm-hour">
+        <span>${esc(i ? clock(h.hour) : t('calm.now'))}</span>${iconFor(h.code, h.isDay, { size: 30 })}<b>${T(h.temp)}</b>${pop(h.pop ?? 0)}</div>`).join('')}</div>
+    </section>
+    <section class="calm-sec">
+      <h3>${esc(t('calm.daily', { n: days.length }))}</h3>
+      <ul class="calm-days">${days.map((d, i) => `<li>
+        <span class="calm-day">${esc(i ? dayName(d.date, 'short') : t('calm.today'))}</span>
+        <span class="calm-day-icon">${iconFor(d.code, true, { size: 28 })}${pop(d.pop ?? 0)}</span>
+        <span class="calm-lo">${T(d.lo)}</span>
+        <span class="calm-range"><i style="left:${((d.lo - lo) / span) * 100}%;right:${((hi - d.hi) / span) * 100}%"></i></span>
+        <span class="calm-hi">${T(d.hi)}</span></li>`).join('')}</ul>
+    </section>
+    <section class="calm-sec calm-details">
+      <div><span>${esc(t('stat.humidity'))}</span><b>${c.relative_humidity_2m}%</b></div>
+      <div><span>${esc(t('stat.wind'))}</span><b>${esc(compass(c.wind_direction_10m))} ${esc(W(c.wind_speed_10m))}</b></div>
+      <div><span>${esc(t('stat.uv'))}</span><b>${Math.round(uvNow)} · ${esc(uvInfo(uvNow).cat)}</b></div>
+      <div><span>${esc(t('stat.sunrise'))}</span><b>${isoClock(today.sunrise)}</b></div>
+      <div><span>${esc(t('stat.sunset'))}</span><b>${isoClock(today.sunset)}</b></div>
+      <div><span>${esc(t('calm.rain'))}</span><b>${today.pop ?? 0}%</b></div>
+    </section>`;
+}
+
 // ---------- controls ----------
 $('#units').addEventListener('click', () => {
   state.units = state.units === 'F' ? 'C' : 'F';
@@ -1272,6 +1386,7 @@ function applyLanguage() {
 }
 
 document.addEventListener('keydown', e => {
+  if (calm.open) { if (e.key === 'Escape') closeCalm(); return; }
   if (!state.started || document.querySelector('dialog[open]') || !langMenu.hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
   if (e.key === 'Escape') {
     if (pickCard) closePick(); else setExplore(false);
@@ -1319,6 +1434,7 @@ initGamepad({
     globe?.pickAt(x, y);
   },
   back() {
+    if (calm.open) return closeCalm();
     const dlg = document.querySelector('dialog[open]');
     if (!langMenu.hidden) closeLangMenu(true);
     else if (dlg) dlg.close();
@@ -1341,7 +1457,7 @@ initGamepad({
     applyPlaying();
     toast(t(anim.playing ? 'anim.play' : 'anim.pause'));
   },
-  screen(dir) { if (!document.querySelector('dialog[open]')) step(dir); },
+  screen(dir) { if (!calm.open && !document.querySelector('dialog[open]')) step(dir); },
   connected(on) {
     document.body.classList.toggle('has-pad', on);
     toast(t(on ? 'pad.connected' : 'pad.disconnected'));

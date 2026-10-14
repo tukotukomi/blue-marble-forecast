@@ -155,6 +155,7 @@ function closePick() { pickCard?.remove(); pickCard = null; }
 const globe = createGlobe(globeHost, {
   labelLayer: $('#labels'),
   renderLabel,
+  skyName: key => t(`sky.${key}`),
   safeArea: () => safe,
   onDrag: closePick,
   onLayerFrame,
@@ -1800,6 +1801,8 @@ function setExplore(on) {
   if (document.body.classList.contains('explore') === on) return;
   document.body.classList.toggle('explore', on);
   $('#explore-exit').hidden = !on;
+  if (on) exploreWake();
+  else { clearTimeout(exploreIdle); document.body.classList.remove('explore-idle'); }
   closePick();
   closeLangMenu();
   if (on) $('#explore-exit').focus(); else if (['globe', 'region'].includes(state.view)) $('#explore').focus();
@@ -1807,6 +1810,16 @@ function setExplore(on) {
   setTimeout(measureSafe, 400); // after the dock has slid back
   globe?.refreshLabels();
 }
+// In Explore the "Show controls" pill (and the mouse pointer) fade away after
+// 3 s without input; any mouse move, tap, key or controller input brings it back.
+let exploreIdle = 0;
+function exploreWake() {
+  if (!document.body.classList.contains('explore')) return;
+  document.body.classList.remove('explore-idle');
+  clearTimeout(exploreIdle);
+  exploreIdle = setTimeout(() => document.body.classList.add('explore-idle'), 3000);
+}
+for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown']) addEventListener(type, exploreWake, { capture: true, passive: true });
 $('#explore').addEventListener('click', () => { blip('select'); setExplore(true); });
 $('#explore-exit').addEventListener('click', () => { blip('select'); setExplore(false); });
 
@@ -1833,6 +1846,7 @@ function applyLanguage() {
   Object.assign(timelineText, { start: '', end: '', now: '' });
   renderTimeline();
   globe?.refreshLabels();
+  globe?.renameSky();
   if (state.started) requestAnimationFrame(measureSafe);
 }
 
@@ -1877,11 +1891,12 @@ $('#start').addEventListener('click', start);
 initGamepad({
   started: () => state.started,
   start,
-  pan: (dx, dy) => { closePick(); globe?.pan(dx, dy); },
-  zoom: f => globe?.zoom(f),
+  pan: (dx, dy) => { closePick(); exploreWake(); globe?.pan(dx, dy); },
+  zoom: f => { exploreWake(); globe?.zoom(f); },
   // A with nothing selected: open the spot under the centre reticle (Globe and
   // Region), or the middle of the visible globe on the forecast screens.
   pickCenter() {
+    exploreWake();
     if (pickCard) return pickCard.querySelector('button')?.click();
     const free = ['globe', 'region'].includes(state.view) || document.body.classList.contains('explore');
     const x = free || innerWidth <= 860 ? innerWidth / 2 : innerWidth * 0.7;

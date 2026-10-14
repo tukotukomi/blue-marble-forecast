@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { FrameLayer, FrameSync } from './frames.js';
 import { RADAR_BOX } from './data.js';
+import { CONSTELLATIONS, PLANETS, planetPositions } from './sky.js';
 
 // The base imagery ships with the site (tools/fetch-earth.mjs). NASA GIBS
 // renders whole-Earth images on request, which took 4-5 seconds at this size;
@@ -44,19 +45,6 @@ function astro(date = new Date()) {
   return { sunLat: dec, sunLon: ra - gmst, gmst };
 }
 
-// Bright stars of the Big Dipper and Orion (RA hours, Dec degrees) -
-// the original channel showed both when you zoomed all the way out.
-const CONSTELLATIONS = {
-  dipper: {
-    stars: [[11.062, 61.75], [11.031, 56.38], [11.897, 53.69], [12.257, 57.03], [12.900, 55.96], [13.399, 54.93], [13.792, 49.31]],
-    lines: [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]],
-  },
-  orion: {
-    // Betelgeuse, Bellatrix, Mintaka, Alnilam, Alnitak, Saiph, Rigel, Meissa
-    stars: [[5.919, 7.41], [5.419, 6.35], [5.533, -0.30], [5.604, -1.20], [5.679, -1.94], [5.796, -9.67], [5.242, -8.20], [5.585, 9.93]],
-    lines: [[7, 0], [7, 1], [0, 4], [1, 2], [2, 3], [3, 4], [4, 5], [2, 6]],
-  },
-};
 
 const VERT = `
 varying vec2 vUv; varying vec3 vN; varying vec3 vW;
@@ -211,7 +199,7 @@ function blankTex(rgba) {
   return t;
 }
 
-export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFrame, onLabelClick, onNeedWeather, onViewSettled, renderLabel, safeArea = () => ({ top: 0, bottom: 0 }) }) {
+export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFrame, onLabelClick, onNeedWeather, onViewSettled, renderLabel, skyName = key => key, safeArea = () => ({ top: 0, bottom: 0 }) }) {
   // Set whenever the scene needs a redraw; see the main loop below.
   let dirty = true;
   const invalidate = () => { dirty = true; };
@@ -326,7 +314,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   );
   scene.add(atmo);
 
-  // --- Sky: random field + the two constellations ---
+  // --- Sky: random field, constellations and the planets (sky.js) ---
   const sky = new THREE.Group();
   scene.add(sky);
   {
@@ -346,15 +334,75 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   const constStarMat = new THREE.PointsMaterial({ size: 0.75, color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false });
   const constGroup = new THREE.Group();
   sky.add(constGroup);
-
-  function placeSky(gmst) {
+  // A soft round dot for the planets.
+  const glow = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, '#fff'); g.addColorStop(0.28, 'rgba(255,255,255,0.95)'); g.addColorStop(0.5, 'rgba(255,255,255,0.3)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  const planetMats = Object.fromEntries(Object.entries(PLANETS).map(([k, p]) =>
+    [k, new THREE.PointsMaterial({ size: p.size, map: glow, color: p.color, transparent: true, depthWrite: false })]));
+  // Names of the constellations and planets, which fade in as you zoom out
+  // (and hide with the City labels switch). Text sprites are cached by name.
+  const nameMats = new Map();
+  let skyNames = true, skyNameOpacity = 0;
+  function nameSprite(text, planet) {
+    const id = `${text}|${planet}`;
+    if (!nameMats.has(id)) {
+      const c = document.createElement('canvas'), x = c.getContext('2d');
+      const font = `${planet ? 700 : 600} 34px system-ui, sans-serif`;
+      x.font = font;
+      c.width = Math.ceil(x.measureText(text).width) + 16; c.height = 48;
+      x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillStyle = planet ? '#ffe9c8' : '#a9cfff';
+      x.shadowColor = 'rgba(0,0,0,0.8)'; x.shadowBlur = 6;
+      x.fillText(text, c.width / 2, 25);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      nameMats.set(id, { mat: new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0 }), aspect: c.width / c.height });
+    }
+    const { mat, aspect } = nameMats.get(id);
+    const sp = new THREE.Sprite(mat);
+    const h = planet ? 1.5 : 1.3;
+    sp.scale.set(h * aspect, h, 1);
+    return sp;
+  }
+  let lastGmst = 0;
+  function placeSky(gmst = lastGmst) {
+    lastGmst = gmst;
+    for (const o of constGroup.children) o.geometry?.dispose?.(); // sprites share theirs
     constGroup.clear();
-    for (const c of Object.values(CONSTELLATIONS)) {
+    for (const [key, c] of Object.entries(CONSTELLATIONS)) {
       const pts = c.stars.map(([ra, dec]) => toVec(dec, ra * 15 - gmst, 78));
       constGroup.add(new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), constStarMat));
       const seg = c.lines.flatMap(([a, b]) => [pts[a], pts[b]]);
-      constGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), constMat));
+      if (seg.length) constGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), constMat));
+      // The name sits just below the constellation's lowest star.
+      const mid = pts.reduce((a, p) => a.add(p), new THREE.Vector3()).normalize();
+      const low = Math.min(...c.stars.map(([, dec]) => dec));
+      const ra = Math.atan2(-mid.z, mid.x) / D2R;
+      const name = nameSprite(skyName(key), false);
+      name.position.copy(toVec(low - 3.2, ra, 77));
+      constGroup.add(name);
     }
+    for (const [key, { ra, dec }] of Object.entries(planetPositions())) {
+      const p = toVec(dec, ra * 15 - gmst, 77.5);
+      constGroup.add(new THREE.Points(new THREE.BufferGeometry().setFromPoints([p]), planetMats[key]));
+      const name = nameSprite(skyName(key), true);
+      name.position.copy(toVec(dec - 2.4, ra * 15 - gmst, 77));
+      constGroup.add(name);
+    }
+  }
+  // New language: rebuild the names.
+  function renameSky() {
+    for (const { mat } of nameMats.values()) { mat.map.dispose(); mat.dispose(); }
+    nameMats.clear();
+    placeSky();
+    skyNameOpacity = -1; // the new names start hidden: fade them back in
+    invalidate();
   }
 
   function updateSun() {
@@ -800,6 +848,8 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     if (Math.abs(offset.x) > 0.5 || Math.abs(offset.y) > 0.5) camera.setViewOffset(w, h, -offset.x, offset.y, w, h);
     else camera.clearViewOffset();
     constMat.opacity = THREE.MathUtils.clamp((cam.dist - 3) / 2, 0, 0.55);
+    const names = skyNames ? THREE.MathUtils.clamp((cam.dist - 3.4) / 1.6, 0, 0.9) : 0;
+    if (names !== skyNameOpacity) { skyNameOpacity = names; for (const { mat } of nameMats.values()) mat.opacity = names; }
     // Rain-edge roughness only up close, where it's finer than the data; far
     // out it would be smaller than a pixel and just shimmer.
     uniforms.uGrain.value = THREE.MathUtils.clamp((1.6 - cam.dist) / 0.4, 0, 1);
@@ -831,6 +881,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     flyTo,
     setMarkers,
     refreshLabels,
+    renameSky,
     get mode() { return mode; },
     // widthKm (park only): fly in close enough to show about that much ground
     // across the screen, centred on the place instead of nudged north of it.
@@ -854,7 +905,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       invalidate();
       if (name === 'night') uniforms.uNight.value = on ? 1 : 0;
       if (name === 'borders') showBorders(on);
-      if (name === 'labels') { cityLabels = on; refreshLabels(); }
+      if (name === 'labels') { cityLabels = skyNames = on; skyNameOpacity = -1; refreshLabels(); }
       if (name in ANIM_UNIFORMS) uniforms[ANIM_UNIFORMS[name][0]].value = on ? 1 : 0;
       if (name in ANIM_UNIFORMS && name !== 'fcst') sync.refresh();
     },

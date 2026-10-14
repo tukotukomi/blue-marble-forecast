@@ -561,6 +561,9 @@ body.explore .dock { transform: translate(-50%, 24px); }
   animation: exit-in 0.3s cubic-bezier(.3, 1.4, .5, 1);
 }
 .explore-exit[hidden] { display: none; }
+.explore-exit { transition: opacity 0.4s; }
+body.explore-idle .explore-exit { opacity: 0; pointer-events: none; }
+body.explore-idle, body.explore-idle * { cursor: none !important; }
 @keyframes exit-in { from { opacity: 0; transform: translate(-50%, 16px); } }
 
 @media (max-width: 860px) {

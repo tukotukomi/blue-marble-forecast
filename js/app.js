@@ -65,9 +65,12 @@ const state = {
   animOpen: store.get('animOpen', false), // Globe screen: timers expanded
   started: false,
 };
-// Every visit starts at home. (Earlier versions saved the last place viewed;
-// that copy is cleared.)
-state.viewing = state.home;
+// Every visit starts at the current location when this device shares it
+// (the last fix shows at once and is refreshed after start; see
+// startAtCurrentLocation), otherwise at home. Earlier versions saved the
+// last place viewed; that copy is cleared.
+state.current = store.get('current', null);
+state.viewing = state.current ? { ...state.current } : state.home;
 try { localStorage.removeItem('fc.viewing'); } catch { /* storage unavailable */ }
 
 // Dock order; the app still opens on 'now' (see start()).
@@ -333,7 +336,8 @@ function renderTop() {
     b.setAttribute('aria-pressed', String(state.music));
   }
   // The pin in the location chip marks home; elsewhere the chip is just the name.
-  $('#loc-btn').classList.toggle('home', sameLoc(v, state.home));
+  $('#loc-btn').classList.toggle('current', !!v.current);
+  $('#loc-btn').classList.toggle('home', !v.current && sameLoc(v, state.home));
   syncStar();
   tick();
 }
@@ -680,22 +684,33 @@ const RENDER = {
     if (!state.saved.length) {
       return `<div class="empty places-empty">${starIcon(true, 56)}<h3>${esc(t('places.emptyTitle'))}</h3><p>${esc(t('places.emptyBody'))}</p></div>${calmButton()}`;
     }
-    return `<ul class="places">${state.saved.map((p, i) => {
+    // One row: kind is 'current' (the device's location), 'home' or 'saved'.
+    const row = (p, i, kind) => {
       const wx = savedWx.get(placeKey(p)), cur = wx?.current, day = wx?.daily;
       const now = wx && localNow(wx);
-      const sub = [now && clock(now.getUTCHours(), now.getUTCMinutes(), true), placeLine(p)].filter(Boolean).join(' · ');
-      const home = sameLoc(p, state.home) ? ` <i class="place-tag">${esc(t('places.home'))}</i>` : '';
-      return `<li class="place${sameLoc(p, state.viewing) ? ' here' : ''}">
+      const sub = [now && clock(now.getUTCHours(), now.getUTCMinutes(), true), kind === 'current' ? placeName(p) : placeLine(p)].filter(Boolean).join(' · ');
+      const title = kind === 'current' ? esc(t('places.current')) : esc(placeName(p)) + (kind === 'home' ? ` <i class="place-tag">${esc(t('places.home'))}</i>` : '');
+      const here = kind === 'current' ? !!state.viewing.current : !state.viewing.current && sameLoc(p, state.viewing);
+      const end = kind === 'current' ? `<span class="place-star is-home" title="${esc(t('places.current'))}">${HERE_ICON}</span>`
+        : kind === 'home' ? `<span class="place-star is-home" title="${esc(t('places.homeKept'))}">${HOME_PIN_ICON}</span>`
+        : `<button class="place-star" type="button" data-i="${i}" aria-label="${esc(t('places.remove', { place: placeName(p) }))}">${starIcon(true)}</button>`;
+      return `<li class="place${here ? ' here' : ''}">
         <button class="place-open" type="button" data-i="${i}">
           <span class="place-icon">${cur ? iconFor(cur.weather_code, !!cur.is_day, { size: 44 }) : ''}</span>
-          <span class="place-text"><b>${esc(placeName(p))}${home}</b><small>${esc(sub)}</small></span>
+          <span class="place-text"><b>${title}</b><small>${esc(sub)}</small></span>
           <span class="place-temps">${cur ? `<b>${T(cur.temperature_2m)}</b><small><span class="hi">${T(day.temperature_2m_max[0])}</span> <span class="lo">${T(day.temperature_2m_min[0])}</span></small>` : '<b>–</b>'}</span>
         </button>
-        ${sameLoc(p, state.home)
-          ? `<span class="place-star is-home" title="${esc(t('places.homeKept'))}">${HOME_PIN_ICON}</span>`
-          : `<button class="place-star" type="button" data-i="${i}" aria-label="${esc(t('places.remove', { place: placeName(p) }))}">${starIcon(true)}</button>`}
+        ${end}
       </li>`;
-    }).join('')}</ul>${calmButton()}`;
+    };
+    // Current Location before it's known: a row that asks for it.
+    const currentRow = state.current ? row(state.current, 'current', 'current') : `<li class="place">
+        <button class="place-open" type="button" data-i="current">
+          <span class="place-icon">${HERE_ICON.replace(/width="20" height="20"/, 'width="30" height="30"')}</span>
+          <span class="place-text"><b>${esc(t('places.current'))}</b><small>${esc(t(geoDenied ? 'places.currentDenied' : 'places.currentOff'))}</small></span>
+        </button>
+      </li>`;
+    return `<ul class="places">${currentRow}${state.saved.map((p, i) => row(p, i, sameLoc(p, state.home) ? 'home' : 'saved')).join('')}</ul>${calmButton()}`;
   },
   globe() {
     const s = globe?.sunInfo();
@@ -719,6 +734,7 @@ const AFTER = {
   places() {
     loadSavedWeather();
     document.querySelectorAll('.place-open').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.i === 'current') return useCurrentLocation();
       const p = state.saved[+b.dataset.i];
       blip('select');
       if (!sameLoc(p, state.viewing)) openLocation(p);
@@ -1008,10 +1024,13 @@ function updateHiRes(name) {
 }
 
 // ---------- locations ----------
-function openLocation(loc, { asHome = false } = {}) {
+// auto: the app's own move (to the current location at start), which
+// mustn't count as the visitor choosing a place.
+function openLocation(loc, { asHome = false, auto = false } = {}) {
+  if (!auto) movedByUser = true;
   state.viewing = { ...loc };
   setCollapsed(false);
-  if (asHome) { state.home = { ...loc }; store.set('home', state.home); keepHomeSaved(); }
+  if (asHome) { state.home = fixedPlace(loc); store.set('home', state.home); keepHomeSaved(); }
   state.fc = null;
   render(false);
   loadLocation();
@@ -1134,20 +1153,14 @@ async function runSearch(q) {
     $('#loc-results').innerHTML = searchHint(t('search.unavailable'));
   }
 }
-$('#loc-geo').addEventListener('click', () => {
+$('#loc-geo').addEventListener('click', async () => {
   if (!navigator.geolocation) return toast(t('geo.unsupported'));
   $('#loc-geo').disabled = true;
-  navigator.geolocation.getCurrentPosition(pos => {
-    $('#loc-geo').disabled = false;
-    dlg.close();
-    const { latitude: lat, longitude: lon } = pos.coords;
-    const near = nearestCity(lat, lon, 1);
-    openLocation(near ? { near: near.name, region: '', cc: near.cc, lat, lon, picked: true } : { mine: true, region: '', cc: '', lat, lon, picked: true },
-      { asHome: $('#loc-home').checked });
-  }, () => {
-    $('#loc-geo').disabled = false;
-    toast(t('geo.failed'));
-  }, { timeout: 10000, maximumAge: 600000 });
+  const loc = await locate({ ask: true });
+  $('#loc-geo').disabled = false;
+  if (!loc) return toast(t(geoDenied ? 'places.currentDenied' : 'geo.failed'));
+  dlg.close();
+  openLocation(loc, { asHome: $('#loc-home').checked });
 });
 
 // ---------- My Places ----------
@@ -1171,7 +1184,7 @@ function syncStar() {
 function toggleSaved(loc) {
   if (sameLoc(loc, state.home)) { blip('select'); toast(t('places.homeKept')); return; }
   const was = isSaved(loc);
-  state.saved = was ? state.saved.filter(p => !sameLoc(p, loc)) : [...state.saved, { ...loc }];
+  state.saved = was ? state.saved.filter(p => !sameLoc(p, loc)) : [...state.saved, fixedPlace(loc)];
   store.set('saved', state.saved);
   blip('select');
   toast(t(was ? 'places.removed' : 'places.added', { place: placeName(loc) }));
@@ -1179,6 +1192,81 @@ function toggleSaved(loc) {
   if (state.view === 'places') render(false);
 }
 $('#star-btn').addEventListener('click', () => toggleSaved(state.viewing));
+
+// ---------- Current Location ----------
+// The device's position heads My Places and is where the app opens (see the
+// state set-up near the top). The last fix is kept on this device only.
+let movedByUser = false; // the visitor picked a place: don't pull them away
+let geoDenied = false;   // the browser refused (or the visitor said no)
+const HERE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M20.6 3.4 3.6 10.5l7.2 2.7 2.7 7.2Z" fill="#2a8ee8" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+// A copy of a place without the "current location" mark (for home or saving).
+const fixedPlace = ({ current, at, ...place }) => place;
+
+async function geoPermission() {
+  try { return (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { return 'unknown'; }
+}
+
+// Find the device. ask: false only uses permission already given (no prompt).
+async function locate({ ask = true } = {}) {
+  if (!navigator.geolocation) return null;
+  if (!ask && (await geoPermission()) !== 'granted') return null;
+  return new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude: lat, longitude: lon } = pos.coords;
+    const near = nearestCity(lat, lon, 1);
+    const loc = { current: true, region: '', lat, lon, picked: true, ...(near ? { near: near.name, cc: near.cc } : { mine: true, cc: '' }) };
+    geoDenied = false;
+    state.current = loc;
+    store.set('current', { ...loc, at: Date.now() });
+    if (state.view === 'places') render(false);
+    resolve(loc);
+  }, err => {
+    geoDenied = err.code === 1;
+    resolve(null);
+  }, { timeout: 10000, maximumAge: 10 * 60e3 }));
+}
+
+// At start: move to the current location unless the visitor has already
+// gone elsewhere. Permission given before: quietly. Not decided yet: ask
+// when Start is tapped. Refused: home.
+async function startAtCurrentLocation() {
+  const permission = await geoPermission();
+  if (permission === 'denied' || !navigator.geolocation) {
+    geoDenied = permission === 'denied';
+    if (state.viewing.current && !movedByUser) {
+      state.current = null;
+      store.set('current', null);
+      openLocation(state.home, { auto: true });
+    }
+    return;
+  }
+  const moveThere = async ask => {
+    const loc = await locate({ ask });
+    if (loc && !movedByUser && !(state.viewing.current && sameLoc(state.viewing, loc))) openLocation(loc, { auto: true });
+  };
+  if (permission === 'granted') moveThere(false);
+  else if (state.started) moveThere(true);
+  else $('#start').addEventListener('click', () => moveThere(true), { once: true });
+}
+
+// The Current Location row: open it (and refresh the fix), or ask for it.
+async function useCurrentLocation() {
+  blip('select');
+  if (state.current) {
+    openLocation(state.current);
+    go('now', { sound: false });
+    locate({ ask: false });
+    return;
+  }
+  toast(t('places.locating'));
+  const loc = await locate({ ask: true });
+  if (!loc) {
+    toast(t(geoDenied ? 'places.currentDenied' : 'geo.failed'));
+    if (state.view === 'places') render(false);
+    return;
+  }
+  openLocation(loc);
+  go('now', { sound: false });
+}
 
 // Home goes into My Places on its own, at the top. The previous home (after
 // a change) stays as an ordinary saved place.
@@ -1193,11 +1281,12 @@ const HOME_PIN_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidd
 const savedWx = new Map(); // placeKey -> Open-Meteo current + daily
 let savedWxFor = '', savedWxAt = 0;
 async function loadSavedWeather() {
-  const list = state.saved.map(placeKey).join('|');
+  const places = [...(state.current ? [state.current] : []), ...state.saved];
+  const list = places.map(placeKey).join('|');
   if (!list || (list === savedWxFor && Date.now() - savedWxAt < 10 * 60e3)) return;
   savedWxFor = list; savedWxAt = Date.now();
   try {
-    for (const c of await fetchCities(state.saved)) savedWx.set(placeKey(c), c.wx);
+    for (const c of await fetchCities(places)) savedWx.set(placeKey(c), c.wx);
     if (state.view === 'places') render(false);
   } catch { savedWxFor = ''; }
 }
@@ -1216,7 +1305,8 @@ function openCalm() {
   calm.open = true;
   // Step through My Places, starting from the place on screen (first in the
   // list if it isn't saved, so you can swipe back to it).
-  calm.list = isSaved(state.viewing) ? state.saved.map(p => ({ ...p })) : [{ ...state.viewing }, ...state.saved];
+  const places = [...(state.current ? [state.current] : []), ...state.saved].map(p => ({ ...p }));
+  calm.list = places.some(p => sameLoc(p, state.viewing)) ? places : [{ ...state.viewing }, ...places];
   calm.idx = Math.max(0, calm.list.findIndex(p => sameLoc(p, state.viewing)));
   prefetchCalm();
   calm.sky ??= createCalmSky($('#calm-sky'));
@@ -1705,6 +1795,7 @@ initGamepad({
 });
 
 keepHomeSaved();
+startAtCurrentLocation();
 await setLang(detectLang());
 applyLanguage();
 // Loading order: the globe's first picture comes first (index.html preloads

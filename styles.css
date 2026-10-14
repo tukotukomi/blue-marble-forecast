@@ -125,7 +125,9 @@ body:not(.started) .labels { opacity: 0; }
 /* The home pin shows only at home; without it the name gets a little more room. */
 .loc-chip .home-pin { display: none; flex: none; }
 .loc-chip.home .home-pin { display: block; }
-.loc-chip:not(.home) { padding-left: 20px; }
+.loc-chip .here-pin { display: none; flex: none; }
+.loc-chip.current .here-pin { display: block; }
+.loc-chip:not(.home):not(.current) { padding-left: 20px; }
 /* The location chip and, to its right, the go-home button. */
 .loc-wrap { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .loc-wrap .loc-chip { flex: 1; }

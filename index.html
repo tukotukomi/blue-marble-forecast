@@ -136,11 +136,19 @@
   <!-- Calm View: the forecast over an animated sky instead of the globe
        (js/calm.js draws the sky; app.js fills in the text). -->
   <section id="calm" class="calm" hidden data-i18n-attr="aria-label:calm.title" aria-label="Calm View">
+    <!-- Two looks (see app.js): the planet horizon (the globe behind this
+         view, with the sky drawn above it) or today's satellite photo. -->
+    <div class="calm-photo" aria-hidden="true"><img id="calm-photo-img" alt="" crossorigin="anonymous"><span class="calm-photo-pin"></span></div>
     <canvas id="calm-sky" class="calm-sky" aria-hidden="true"></canvas>
+    <!-- Darkens the backdrop as the forecast scrolls up over it. -->
+    <div class="calm-scrim" aria-hidden="true"></div>
+    <p id="calm-photo-credit" class="calm-photo-credit"></p>
     <button id="calm-back" class="calm-back" type="button">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span data-i18n="calm.back">Back to Globe</span>
     </button>
+    <!-- Switches between the two looks; its icon shows the other one. -->
+    <button id="calm-look" class="round glass" type="button"><svg class="icon-planet" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 17a12 12 0 0 1 18 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M6.5 13.5a8 8 0 0 1 11 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".55"/><circle cx="12" cy="6.5" r="2.2" fill="currentColor"/></svg><svg class="icon-photo" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m5 17 4.5-5 3 3.2 2-2.2L19 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="15.5" cy="9" r="1.6" fill="currentColor"/></svg></button>
     <!-- The same music switch as the top bar's, in the same corner. -->
     <button id="calm-music" class="round glass" type="button" data-i18n-attr="aria-label:top.music;title:top.music" aria-label="Music" title="Music">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/><path class="mute" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>

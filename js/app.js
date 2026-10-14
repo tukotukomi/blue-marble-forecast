@@ -1035,7 +1035,9 @@ function openLocation(loc, { asHome = false, auto = false } = {}) {
   render(false);
   loadLocation();
   if (state.layers.fcst) refreshFrames('fcst'); // the forecast follows the viewed place
-  if (globe) {
+  if (globe && calm.open) {
+    if (calm.look === 'planet') globe.setMode('horizon', { lat: loc.lat, lon: loc.lon });
+  } else if (globe) {
     const m = state.view === 'globe' || state.view === 'region' ? 'region' : 'park';
     if (state.view === 'globe') go('now', { sound: false });
     else globe.setMode(m, { lat: loc.lat, lon: loc.lon, ...(m === 'park' ? parkView() : {}) });
@@ -1296,7 +1298,7 @@ async function loadSavedWeather() {
 // matches its weather (calm.js), in place of the globe. Opened from My
 // Places; "Back to Globe", Escape or the phone's back gesture return.
 // list/idx: the places the arrows and swipes step through (see openCalm).
-const calm = { el: $('#calm'), sky: null, open: false, weather: '', list: [], idx: 0 };
+const calm = { el: $('#calm'), sky: null, open: false, weather: '', list: [], idx: 0, look: store.get('calmLook', 'planet') };
 const calmButton = () => `<button class="pill calm-open-btn" type="button" id="calm-open">${esc(t('calm.open'))}</button>`;
 
 function openCalm() {
@@ -1313,9 +1315,9 @@ function openCalm() {
   calm.el.hidden = false;
   document.body.classList.add('calm-open');
   calm.sky.start();
+  applyLook();
   renderCalm();
   requestAnimationFrame(() => calm.el.classList.add('open'));
-  setTimeout(() => { if (calm.open) globe?.suspend(true); }, 450); // once it covers the globe
   // An entry in the history, so the phone's back gesture closes Calm View
   // instead of leaving the site.
   history.pushState({ calm: true }, '', location.search + '#calm');
@@ -1327,12 +1329,137 @@ function closeCalm(fromHistory = false) {
   if (!fromHistory && history.state?.calm) { history.back(); return; } // popstate below finishes
   calm.open = false;
   globe?.suspend(false);
+  restoreGlobeView();
   calm.el.classList.remove('open');
   document.body.classList.remove('calm-open');
   setTimeout(() => { if (!calm.open) { calm.el.hidden = true; calm.sky.stop(); } }, 450);
   history.replaceState(null, '', location.search + '#' + state.view);
 }
 $('#calm-back').addEventListener('click', () => { blip('select'); closeCalm(); });
+
+// ---------- Calm View looks ----------
+// "planet": the real globe seen from low orbit, the Earth's edge curving
+// across the screen with the place just below it and the weather in the sky
+// above (globe.js horizon mode + calm.js with a horizon). "photo": today's
+// NASA satellite picture around the place. The switch is remembered.
+const CALM_HORIZON = 0.56; // = HORIZON in globe.js
+function applyLook() {
+  const planet = calm.look === 'planet', v = state.viewing;
+  calm.el.dataset.look = calm.look;
+  const label = t(planet ? 'calm.lookPhoto' : 'calm.lookPlanet');
+  $('#calm-look').setAttribute('aria-label', label);
+  $('#calm-look').title = label;
+  calm.sky.setHorizon(planet ? CALM_HORIZON : null);
+  clearTimeout(calm.suspendTimer);
+  if (planet) {
+    globe?.suspend(false);
+    globe?.setMode('horizon', { lat: v.lat, lon: v.lon });
+    calm.sky.start();
+  } else {
+    calm.sky.stop();
+    showCalmPhoto();
+    // The photo covers the globe: stop drawing it (and save the battery).
+    calm.suspendTimer = setTimeout(() => { if (calm.open && calm.look === 'photo') globe?.suspend(true); }, 450);
+  }
+}
+$('#calm-look').addEventListener('click', () => {
+  blip('select');
+  calm.look = calm.look === 'planet' ? 'photo' : 'planet';
+  store.set('calmLook', calm.look);
+  applyLook();
+});
+// A new screen shape (say, a phone turned sideways) re-frames either look.
+let lookResize = 0;
+addEventListener('resize', () => {
+  clearTimeout(lookResize);
+  lookResize = setTimeout(() => {
+    if (!calm.open) return;
+    if (calm.look === 'planet') globe?.setMode('horizon', { lat: state.viewing.lat, lon: state.viewing.lon });
+    else showCalmPhoto();
+  }, 300);
+});
+
+// The globe back to what the screen underneath shows.
+function restoreGlobeView() {
+  const v = state.viewing;
+  if (state.view === 'globe') globe?.setMode('globe');
+  else if (state.view === 'region') globe?.setMode('region', { lat: v.lat, lon: v.lon });
+  else globe?.setMode('park', { lat: v.lat, lon: v.lon, ...parkView() });
+}
+
+// Today from space: NASA's daily true-colour satellite photo (VIIRS) of
+// about 250 km around the place, or its city-lights picture at night.
+// Today's pass may not be in yet, and polar orbits leave gaps, so a mostly
+// empty picture steps back a day (up to three), then falls back to Blue
+// Marble's cloud-free Earth.
+const GIBS_WMS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&CRS=EPSG:4326&STYLES=&FORMAT=image/jpeg';
+let photoKey = '';
+// Where the place sits in the photo look, as a fraction of the height: in the
+// middle of the open gap between the hourly strip and the 7-day list (at rest).
+function calmPin() {
+  const body = $('#calm-body'), secs = body.querySelectorAll('.calm-sec');
+  const hourly = secs[0], daily = body.querySelector('.calm-daily');
+  if (!hourly || !daily) return 0.62;
+  const gapTop = hourly.getBoundingClientRect().bottom + body.scrollTop;
+  const gapEnd = daily.getBoundingClientRect().top + body.scrollTop;
+  return Math.min(0.85, Math.max(0.45, (gapTop + gapEnd) / 2 / innerHeight));
+}
+async function showCalmPhoto() {
+  await new Promise(requestAnimationFrame); // the forecast is laid out by then
+  const v = state.viewing, day = state.fc ? !!state.fc.current.is_day : true;
+  const pin = Math.round(calmPin() * 100) / 100;
+  calm.el.style.setProperty('--calm-pin', pin);
+  const key = `${placeKey(v)}|${day}|${innerWidth}x${innerHeight}|${pin}`;
+  if (key === photoKey) return;
+  photoKey = key;
+  const scale = Math.min(devicePixelRatio || 1, 2);
+  const W = Math.min(2048, Math.round(innerWidth * scale)), H = Math.min(2048, Math.round(innerHeight * scale));
+  const latSpan = 2.4, lonSpan = Math.min(60, (latSpan * (W / H)) / Math.max(0.15, Math.cos((v.lat * Math.PI) / 180)));
+  const bbox = [v.lat - latSpan * (1 - pin), v.lon - lonSpan / 2, v.lat + latSpan * pin, v.lon + lonSpan / 2].map(n => n.toFixed(4)).join(',');
+  const base = `${GIBS_WMS}&BBOX=${bbox}&WIDTH=${W}&HEIGHT=${H}`;
+  calm.el.classList.add('photo-loading');
+  if (!day) return setPhoto(`${base}&LAYERS=VIIRS_Black_Marble`, t('calm.photoNight'));
+  for (let back = 0; back < 4; back++) {
+    const date = new Date(Date.now() - back * 864e5).toISOString().slice(0, 10);
+    const url = `${base}&LAYERS=VIIRS_SNPP_CorrectedReflectance_TrueColor&TIME=${date}`;
+    const ok = await mostlyFilled(url);
+    if (photoKey !== key) return; // moved on meanwhile
+    if (ok) {
+      const when = new Intl.DateTimeFormat(locale(), { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(date));
+      return setPhoto(url, t('calm.photoDay', { date: when }));
+    }
+  }
+  setPhoto(`${base}&LAYERS=BlueMarble_NextGeneration`, t('calm.photoFallback'));
+}
+// Whether a picture is mostly real imagery (not the black of missing data).
+async function mostlyFilled(url) {
+  try {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = c.height = 24;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, 24, 24);
+    const d = x.getImageData(0, 0, 24, 24).data;
+    let empty = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] < 24) empty++;
+    return empty < 24 * 24 * 0.2;
+  } catch { return false; }
+}
+function setPhoto(url, caption) {
+  const img = $('#calm-photo-img');
+  img.onload = () => calm.el.classList.remove('photo-loading');
+  img.onerror = () => calm.el.classList.remove('photo-loading');
+  img.src = url;
+  $('#calm-photo-credit').textContent = caption;
+}
+
+// The veil over the backdrop deepens as the forecast scrolls up over it.
+$('#calm-body').addEventListener('scroll', e => {
+  calm.el.style.setProperty('--calm-dim', Math.min(1, e.target.scrollTop / 220).toFixed(3));
+}, { passive: true });
 
 // Next or previous place (dir = 1 or -1): the text slides in from that side
 // and the sky changes to its weather.
@@ -1414,6 +1541,7 @@ function renderCalm() {
   // Rebuild the sky only when the weather changes (not on every re-render).
   const weather = `${c.weather_code}|${c.is_day}`;
   if (weather !== calm.weather) { calm.weather = weather; calm.sky.setWeather(c.weather_code, c.is_day, c.wind_speed_10m); }
+  if (calm.look === 'photo') showCalmPhoto();
 
   const nowH = localNow(fc).getUTCHours();
   const hours = fc.daily.time.slice(0, 3).flatMap(date => hoursFor(fc, date));
@@ -1438,7 +1566,7 @@ function renderCalm() {
       <div class="calm-hours">${next.map((h, i) => `<div class="calm-hour">
         <span>${esc(i ? clock(h.hour) : t('calm.now'))}</span>${iconFor(h.code, h.isDay, { size: 30 })}<b>${T(h.temp)}</b>${pop(h.pop ?? 0)}</div>`).join('')}</div>
     </section>
-    <section class="calm-sec">
+    <section class="calm-sec calm-daily">
       <h3>${esc(t('calm.daily', { n: days.length }))}</h3>
       <ul class="calm-days">${days.map((d, i) => `<li>
         <span class="calm-day">${esc(i ? dayName(d.date, 'short') : t('calm.today'))}</span>

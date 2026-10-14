@@ -417,6 +417,32 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     invalidate();
   }
 
+  // Calm View's planet horizon: a wider lens from low orbit, south of the
+  // place and looking across it, so the Earth's edge curves across the screen
+  // at HORIZON of its height with the place just below it. The planet is made
+  // a little wider than the screen, whatever its shape.
+  const FOV = 35, HORIZON_FOV = 55;
+  const HORIZON = 0.56; // Calm View's sky (calm.js) fades out at the same height
+  function setLens(fov) {
+    if (camera.fov === fov) return;
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    invalidate();
+  }
+  function horizonView(lat, lon, ms = 1800) {
+    const w = host.clientWidth, h = host.clientHeight;
+    setLens(HORIZON_FOV);
+    const halfV = (HORIZON_FOV * D2R) / 2, halfW = Math.atan(Math.tan(halfV) * (w / Math.max(1, h)));
+    const limb = THREE.MathUtils.clamp(halfW * 1.35, 18 * D2R, 50 * D2R); // the planet's edge, seen from the camera
+    const dist = 1 / Math.sin(limb);
+    const back = (Math.acos(1 / dist) * 0.45) / D2R; // degrees south of the place to sit
+    // The edge is `limb` above the view's centre; shift the picture so it
+    // lands at HORIZON of the height.
+    const edgeAboveCentre = (Math.tan(limb) / Math.tan(halfV)) * (h / 2);
+    offsetTarget = { x: 0, y: h / 2 - (HORIZON * h + edgeAboveCentre) };
+    flyTo(THREE.MathUtils.clamp(lat - back, -85, 85), lon, dist, ms);
+  }
+
   function flyTo(lat, lon, dist, ms = 1600) {
     let dLon = ((lon - cam.lon + 540) % 360) - 180;
     anim = { from: { ...cam }, to: { lat, lon: cam.lon + dLon, dist }, t0: performance.now(), ms };
@@ -561,7 +587,8 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     const want = [];
     for (const m of markers) {
       const it = m.item;
-      let visible = mode !== 'intro' && (it.home || (it.minZoom ?? 0) <= z);
+      // Over Calm View's planet only the place's own marker shows.
+      let visible = mode !== 'intro' && (it.home || (mode !== 'horizon' && (it.minZoom ?? 0) <= z));
       // 0 at the horizon, 1 directly below the camera.
       const facing = (m.vec.dot(camDir) / m.vec.length() - 1 / cam.dist) / horizon;
       if (facing < 0.03) visible = false;
@@ -803,6 +830,8 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     setMode(m, { lat, lon, ms, widthKm } = {}) {
       mode = m;
       host.dataset.mode = m;
+      if (m === 'horizon') { horizonView(lat ?? cam.lat, lon ?? cam.lon, ms); lastInteract = performance.now(); refreshLabels(); return; }
+      setLens(FOV);
       const wide = host.clientWidth > 860;
       // Push the focus point out from under the forecast panel.
       offsetTarget = m === 'park' ? (wide ? { x: host.clientWidth * 0.2, y: 0 } : { x: 0, y: host.clientHeight * 0.22 }) : { x: 0, y: 0 };

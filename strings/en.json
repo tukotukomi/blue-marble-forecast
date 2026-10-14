@@ -220,6 +220,7 @@
   "globe.night": "Live day & night",
   "globe.precip": "Rain & snow (NASA satellites)",
   "globe.radar": "High resolution radar",
+  "globe.labels": "City labels",
   "globe.borders": "Country & state borders",
   "globe.fcst": "Forecast rain (next 12h)",
   "anim.play": "Play",

@@ -527,6 +527,10 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   // label is only created the first time it is placed on screen, so thousands
   // of cities cost nothing until you zoom in on them.
   let markers = [];
+  // City labels switched off (the "City labels" layer), and over Calm View's
+  // planet, the place's own label shrinks to just its red dot.
+  let cityLabels = true;
+  const dotOnly = () => mode === 'horizon' || !cityLabels;
   function setMarkers(items) {
     labelLayer.replaceChildren();
     markers = items.map(item => ({
@@ -540,7 +544,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   function element(m) {
     if (!m.el) {
       const b = document.createElement('button');
-      b.className = 'g-label' + (m.item.home ? ' is-home' : '');
+      b.className = 'g-label' + (m.item.home ? ' is-home' : '') + (m.item.home && dotOnly() ? ' dot-only' : '');
       b.type = 'button';
       b.style.visibility = 'hidden';
       b.style.zIndex = m.item.home ? 5 : 1;
@@ -558,6 +562,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     for (const m of markers) {
       if (!m.el || (only && !only.has(m.item))) continue;
       m.el.innerHTML = renderLabel(m.item, mode);
+      if (m.item.home) m.el.classList.toggle('dot-only', dotOnly());
       m.dirty = true;
     }
     invalidate();
@@ -587,8 +592,8 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     const want = [];
     for (const m of markers) {
       const it = m.item;
-      // Over Calm View's planet only the place's own marker shows.
-      let visible = mode !== 'intro' && (it.home || (mode !== 'horizon' && (it.minZoom ?? 0) <= z));
+      // Over Calm View's planet, or with city labels off, only the place's own marker shows.
+      let visible = mode !== 'intro' && (it.home || (!dotOnly() && (it.minZoom ?? 0) <= z));
       // 0 at the horizon, 1 directly below the camera.
       const facing = (m.vec.dot(camDir) / m.vec.length() - 1 / cam.dist) / horizon;
       if (facing < 0.03) visible = false;
@@ -597,7 +602,9 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
         const x = (tmp.x * 0.5 + 0.5) * w, y = (-tmp.y * 0.5 + 0.5) * h;
         if (m.el && m.dirty) { m.w = m.el.offsetWidth || m.ew; m.h = m.el.offsetHeight || m.eh; m.dirty = false; }
         const bw = m.el ? m.w : m.ew, bh = m.el ? m.h : m.eh;
-        const box = { l: x - bw / 2, r: x + bw / 2, t: y - bh, b: y };
+        // Pills sit above their spot (the tail points at it); a lone dot sits on it.
+        const dot = it.home && dotOnly();
+        const box = { l: x - bw / 2, r: x + bw / 2, t: dot ? y - bh / 2 : y - bh, b: dot ? y + bh / 2 : y };
         const off = x < -60 || x > w + 60 || (!it.home && (y - bh < safe.top || y > h - safe.bottom));
         const clash = !off && !it.home && placed.some(p => box.l < p.r + 4 && box.r > p.l - 4 && box.t < p.b + 4 && box.b > p.t - 4);
         if (!clash && !off) {
@@ -847,6 +854,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       invalidate();
       if (name === 'night') uniforms.uNight.value = on ? 1 : 0;
       if (name === 'borders') showBorders(on);
+      if (name === 'labels') { cityLabels = on; refreshLabels(); }
       if (name in ANIM_UNIFORMS) uniforms[ANIM_UNIFORMS[name][0]].value = on ? 1 : 0;
       if (name in ANIM_UNIFORMS && name !== 'fcst') sync.refresh();
     },

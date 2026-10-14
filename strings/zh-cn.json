@@ -220,6 +220,7 @@
   "globe.night": "实时昼夜",
   "globe.precip": "雨雪（NASA 卫星）",
   "globe.radar": "高分辨率雷达",
+  "globe.labels": "城市标签",
   "globe.borders": "国界与省州界",
   "globe.fcst": "预报降水（未来 12 小时）",
   "anim.play": "播放",

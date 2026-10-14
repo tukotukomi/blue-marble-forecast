@@ -56,7 +56,7 @@ const state = {
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, sat: true, radar: true, borders: true, fcst: false, ...savedLayers() },
+  layers: { night: true, sat: true, radar: true, borders: true, labels: true, fcst: false, ...savedLayers() },
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',
@@ -923,7 +923,7 @@ function layersHTML() {
   const key = summaryKey();
   const summary = `<div class="anim-summary"><b>${esc(t('anim.summary', { n: on.length }))}</b><span id="anim-summary-time">${esc(key ? frameLabel(key) : '')}</span></div>`;
   return `<div id="layers">
-    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('borders', t('globe.borders'))}${sw('fcst', t('globe.fcst'))}</div>
+    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('borders', t('globe.borders'))}${sw('labels', t('globe.labels'))}${sw('fcst', t('globe.fcst'))}</div>
     ${rows ? `<div class="anim${open ? '' : ' collapsed'}"><button type="button" class="anim-play" id="anim-play"></button>
       <div class="anim-rows">${open ? rows : summary}</div>
       <button type="button" class="anim-toggle" id="anim-toggle" aria-expanded="${open}" aria-label="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}" title="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
@@ -1937,5 +1937,5 @@ const globeShown = (globe?.ready ?? Promise.resolve()).then(() => document.body.
 globeShown.then(() => {
   loadPlaces();
   // Restore the layers the visitor left switched on.
-  for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night') setLayer(name, on, false);
+  for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night' || name === 'labels') setLayer(name, on, false);
 });

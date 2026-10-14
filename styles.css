@@ -67,6 +67,9 @@ body[data-view="region"] .g-label { flex-direction: column; gap: 0; padding: 4px
 body[data-view="region"] .g-label .g-name { font-size: 11px; color: var(--ink-soft); }
 .g-label.is-home { padding: 5px 12px 5px 8px; background: #fff; font-size: 13px; }
 .g-label.is-home b { color: var(--wii-deep); margin-left: 4px; }
+/* City labels off (and over Calm View's planet): just the place's red dot. */
+.g-label.is-home.dot-only { padding: 4px; background: none; box-shadow: none; }
+.g-label.is-home.dot-only::after, .g-label.is-home.dot-only .g-name { display: none; }
 /* The pulse scales a pseudo-element (transform + opacity only) so it stays
    on the compositor instead of repainting a box-shadow every frame. */
 .pin { position: relative; width: 12px; height: 12px; border-radius: 50%; background: #ff4f63; box-shadow: 0 0 0 3px rgba(255, 79, 99, 0.3); }

@@ -66,10 +66,11 @@ export function createCalmSky(canvas) {
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const sprites = { light: [0, 1, 2].map(() => cloudSprite('rgba(255,255,255,0.55)')), dark: [0, 1, 2].map(() => cloudSprite('rgba(150,162,180,0.5)')) };
   let W = 0, H = 0, dpr = 1, sky = null, scene = sceneFor(0, true), wind = 8;
-  // With a horizon (a fraction of the height), the sky, sun or moon, stars,
-  // clouds and fog fade out toward it so the planet below shows; rain and snow
-  // keep falling over it. null: the sky fills the whole screen.
-  let horizon = null, fade = null;
+  // With a horizon (a fraction of the height; Calm View's planet look) there
+  // is no sky at all: the weather hangs in space over the planet. Sun or moon
+  // and their glow, clouds above the planet's edge (none under rain or snow),
+  // and rain and snow falling onto it. null: the sky fills the whole screen.
+  let horizon = null, top = 0;
   let clouds = [], drops = [], flakes = [], stars = [], fogs = [];
   let raf = 0, last = 0, t = 0, flash = 0, nextFlash = 3000, bolt = null;
 
@@ -84,28 +85,22 @@ export function createCalmSky(canvas) {
   // (Re)populate everything for the current scene and screen size.
   function build() {
     const cols = SKIES[scene.kind][scene.isDay ? 'day' : 'night'];
-    const top = horizon ? H * horizon : H; // where the sky ends
+    top = horizon ? H * horizon : H; // where the sky (or space) ends
     sky = ctx.createLinearGradient(0, 0, 0, top);
     sky.addColorStop(0, cols[0]); sky.addColorStop(0.55, cols[1]); sky.addColorStop(1, cols[2]);
     const area = (W * H) / (390 * 844); // ~1 on a phone
     const n = (k, cap) => Math.min(cap, Math.round(k * Math.max(0.6, area)));
-    clouds = Array.from({ length: Math.ceil(n(10, 18) * scene.clouds) }, () => ({
-      x: rand(-0.3, 1.1) * W, y: rand(-0.08, 0.55) * top, s: rand(0.7, 1.7) * Math.max(0.8, W / 700),
+    // Over space, rain and snow fall from nowhere: no cloud deck.
+    const cloudy = horizon && (scene.rain || scene.snow) ? 0 : scene.clouds;
+    clouds = Array.from({ length: Math.ceil(n(10, 18) * cloudy) }, () => ({
+      x: rand(-0.3, 1.1) * W, y: (horizon ? rand(-0.12, 0.45) : rand(-0.08, 0.55)) * top, s: rand(0.7, 1.7) * Math.max(0.8, W / 700),
       v: rand(0.5, 1.2), sprite: Math.floor(rand(0, 3)), a: rand(0.55, 1),
     }));
     drops = Array.from({ length: n((scene.drizzle ? 170 : 360) * scene.rain, 520) }, () => ({ x: rand(0, W), y: rand(0, H), l: rand(10, 22) * (scene.drizzle ? 0.5 : 1), v: rand(0.9, 1.3) }));
     flakes = Array.from({ length: n(170 * scene.snow, 260) }, () => ({ x: rand(0, W), y: rand(0, H), r: rand(1.2, 3.4), v: rand(0.5, 1), p: rand(0, Math.PI * 2) }));
-    const starry = !scene.isDay && scene.sky;
+    const starry = !scene.isDay && scene.sky && !horizon; // space has its own stars
     stars = starry ? Array.from({ length: n(160, 260) }, () => ({ x: rand(0, W), y: rand(0, top * 0.75), r: rand(0.4, 1.4), w: rand(0.5, 2), p: rand(0, 6) })) : [];
     fogs = Array.from({ length: scene.fog ? 6 : 0 }, (_, i) => ({ x: rand(0, W), y: top * (0.25 + i * 0.13), rx: rand(0.5, 0.9) * W, ry: rand(40, 90), v: rand(0.3, 0.7) }));
-    // Keeps the sky layer opaque high up and fades it out toward the horizon.
-    fade = horizon ? ctx.createLinearGradient(0, 0, 0, H) : null;
-    if (fade) {
-      fade.addColorStop(0, '#000');
-      fade.addColorStop(Math.max(0, horizon - 0.14), '#000');
-      fade.addColorStop(Math.min(1, horizon + 0.01), 'rgba(0,0,0,0)');
-      fade.addColorStop(1, 'rgba(0,0,0,0)');
-    }
   }
 
   function lightning(dt) {
@@ -124,11 +119,17 @@ export function createCalmSky(canvas) {
     if (bolt) bolt.life -= dt / 260;
   }
 
+  // Clouds and fog thin out as they near the planet's edge, so they hover
+  // over space rather than sit on the Earth.
+  function nearEdge(y) {
+    return horizon ? Math.min(1, Math.max(0, (top - y) / (H * 0.1))) : 1;
+  }
+
   function draw(dt) {
     t += dt;
     const k = dt / 16.7; // motion per 60 fps frame
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, H);
+    if (horizon) ctx.clearRect(0, 0, W, H);
+    else { ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H); }
 
     // Stars (clear or partly cloudy nights), twinkling.
     for (const s of stars) {
@@ -163,10 +164,12 @@ export function createCalmSky(canvas) {
     // Clouds drift with the wind; dark ones under rain and storms.
     for (const c of clouds) {
       c.x += (0.12 + wind * 0.02) * c.v * k;
-      const img = (scene.dark > 0.35 ? sprites.dark : sprites.light)[c.sprite];
+      // Seen from space, clouds are lit from above: always the light ones.
+      const dark = !horizon && scene.dark > 0.35;
+      const img = (dark ? sprites.dark : sprites.light)[c.sprite];
       const w = img.width * c.s, h = img.height * c.s;
       if (c.x > W + 20) c.x = -w - rand(0, W * 0.3);
-      ctx.globalAlpha = c.a * (scene.dark > 0.35 ? (scene.isDay ? 0.85 : 0.5) : 0.85);
+      ctx.globalAlpha = c.a * (!scene.isDay && (dark || horizon) ? 0.5 : 0.85) * nearEdge(c.y + h * 0.5);
       ctx.drawImage(img, c.x, c.y, w, h);
     }
     ctx.globalAlpha = 1;
@@ -179,7 +182,7 @@ export function createCalmSky(canvas) {
       const cy = f.y * f.rx / f.ry;
       ctx.save(); ctx.scale(1, f.ry / f.rx);
       const g = ctx.createRadialGradient(f.x, cy, 0, f.x, cy, f.rx);
-      g.addColorStop(0, 'rgba(235,240,245,0.22)'); g.addColorStop(1, 'rgba(235,240,245,0)');
+      g.addColorStop(0, `rgba(235,240,245,${0.22 * nearEdge(f.y)})`); g.addColorStop(1, 'rgba(235,240,245,0)');
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(f.x, cy, f.rx, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
@@ -197,13 +200,6 @@ export function createCalmSky(canvas) {
       if (flash > 0) { ctx.fillStyle = `rgba(225,232,255,${flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
     }
 
-    // With a horizon, everything so far fades out toward it.
-    if (fade) {
-      ctx.globalCompositeOperation = 'destination-in';
-      ctx.fillStyle = fade;
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = 'source-over';
-    }
 
     // Rain: slanted streaks, all in one stroke.
     if (drops.length) {

@@ -71,6 +71,9 @@ export function createCalmSky(canvas) {
   // and their glow, clouds above the planet's edge (none under rain or snow),
   // and rain and snow falling onto it. null: the sky fills the whole screen.
   let horizon = null, top = 0;
+  // The Moon's phase (0 new, 0.5 full; sky.js moonPhase) and whether the place
+  // is south of the equator, where the Moon looks flipped left to right.
+  let moonAge = 0.5, south = false;
   let clouds = [], drops = [], flakes = [], stars = [], fogs = [];
   let raf = 0, last = 0, t = 0, flash = 0, nextFlash = 3000, bolt = null;
 
@@ -119,6 +122,35 @@ export function createCalmSky(canvas) {
     if (bolt) bolt.life -= dt / 260;
   }
 
+  // Tonight's Moon: lit on the side facing the Sun (the right while waxing,
+  // seen from the north), with a faint earthshine on the rest. Its glow grows
+  // with how much of it is lit.
+  function drawMoon(cx, cy, r) {
+    const a = moonAge * Math.PI * 2, lit = (1 - Math.cos(a)) / 2;
+    const glow = ctx.createRadialGradient(cx, cy, r, cx, cy, r * 6);
+    glow.addColorStop(0, `rgba(220,230,255,${0.06 + 0.2 * lit})`); glow.addColorStop(1, 'rgba(220,230,255,0)');
+    ctx.fillStyle = glow; ctx.fillRect(cx - r * 6, cy - r * 6, r * 12, r * 12);
+    ctx.fillStyle = 'rgba(150,160,185,0.16)'; // earthshine
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    if (lit < 0.01) return;
+    ctx.save();
+    ctx.translate(cx, cy);
+    if ((moonAge > 0.5) !== south) ctx.scale(-1, 1); // waning: lit on the left
+    // The lit part: the right half, then back along the terminator, an
+    // ellipse that bulges right for a crescent and left for a gibbous Moon.
+    ctx.beginPath();
+    ctx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2);
+    const rx = r * Math.abs(Math.cos(a)), crescent = lit < 0.5;
+    ctx.ellipse(0, 0, rx, r, 0, Math.PI / 2, crescent ? -Math.PI / 2 : Math.PI * 1.5, crescent);
+    ctx.closePath();
+    ctx.fillStyle = '#f3f1e8';
+    ctx.fill();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(190,190,180,0.35)';
+    for (const [dx, dy, rr] of [[-0.3, -0.2, 0.22], [0.25, 0.15, 0.16], [-0.05, 0.35, 0.12]]) { ctx.beginPath(); ctx.arc(dx * r, dy * r, rr * r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+
   // Clouds and fog thin out as they near the planet's edge, so they hover
   // over space rather than sit on the Earth.
   function nearEdge(y) {
@@ -151,13 +183,7 @@ export function createCalmSky(canvas) {
         for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R * 0.9, -R * 0.06); ctx.lineTo(R * 0.9, R * 0.06); ctx.fill(); }
         ctx.restore();
       } else {
-        const r = Math.max(22, R * 0.045);
-        const glow = ctx.createRadialGradient(cx, cy, r, cx, cy, r * 6);
-        glow.addColorStop(0, 'rgba(220,230,255,0.25)'); glow.addColorStop(1, 'rgba(220,230,255,0)');
-        ctx.fillStyle = glow; ctx.fillRect(cx - r * 6, cy - r * 6, r * 12, r * 12);
-        ctx.fillStyle = '#f3f1e8'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(190,190,180,0.35)';
-        for (const [dx, dy, rr] of [[-0.3, -0.2, 0.22], [0.25, 0.15, 0.16], [-0.05, 0.35, 0.12]]) { ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, rr * r, 0, Math.PI * 2); ctx.fill(); }
+        drawMoon(cx, cy, Math.max(22, R * 0.045));
       }
     }
 
@@ -253,6 +279,12 @@ export function createCalmSky(canvas) {
       if (!raf) { last = 0; raf = requestAnimationFrame(frame); }
     },
     stop() { cancelAnimationFrame(raf); raf = 0; },
+    // The Moon's phase (sky.js moonPhase) and whether the place is in the south.
+    setMoon(age, isSouth = false) {
+      if (age === moonAge && isSouth === south) return;
+      moonAge = age; south = isSouth;
+      if (still && W) draw(0);
+    },
     // A fraction of the height where the sky ends (the planet look), or null.
     setHorizon(fraction) {
       if (horizon === fraction) return;

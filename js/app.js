@@ -5,6 +5,7 @@ import { fetchForecastRain } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
 import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createCalmSky } from './calm.js';
+import { moonPhase } from './sky.js';
 import { VERSION, BUILD } from './version.js';
 import { initFeedback } from './feedback.js';
 import { createGlobe } from './globe.js';
@@ -1542,6 +1543,7 @@ function renderCalm() {
   // Rebuild the sky only when the weather changes (not on every re-render).
   const weather = `${c.weather_code}|${c.is_day}`;
   if (weather !== calm.weather) { calm.weather = weather; calm.sky.setWeather(c.weather_code, c.is_day, c.wind_speed_10m); }
+  calm.sky.setMoon(moonPhase(), state.viewing.lat < 0);
   if (calm.look === 'photo') showCalmPhoto();
 
   const nowH = localNow(fc).getUTCHours();

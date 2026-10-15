@@ -707,7 +707,22 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     m.shown = on;
     if (m.el) m.el.style.visibility = on ? 'visible' : 'hidden';
   }
+  // The Moon on screen, { x, y, r } in pixels, or null when it's off screen or
+  // hidden behind the Earth. City labels it would cover are left out.
+  const moonRay = new THREE.Ray(), moonHit = new THREE.Vector3(), earthBall = new THREE.Sphere(new THREE.Vector3(), 1);
+  function moonOnScreen(w, h) {
+    const far = camera.position.distanceTo(moon.position);
+    moonRay.set(camera.position, tmp.copy(moon.position).sub(camera.position).normalize());
+    if (moonRay.intersectSphere(earthBall, moonHit) && camera.position.distanceTo(moonHit) < far) return null;
+    tmp.copy(moon.position).project(camera);
+    if (tmp.z > 1 || Math.abs(tmp.x) > 1.3 || Math.abs(tmp.y) > 1.3) return null;
+    const r = (Math.tan(Math.asin(MOON_R / far)) / Math.tan((camera.fov * D2R) / 2)) * (h / 2);
+    return { x: (tmp.x * 0.5 + 0.5) * w, y: (-tmp.y * 0.5 + 0.5) * h, r: r + 6 };
+  }
+  const coversBox = (c, b) => Math.hypot(c.x - Math.max(b.l, Math.min(c.x, b.r)), c.y - Math.max(b.t, Math.min(c.y, b.b))) < c.r;
+
   function layoutLabels(w, h) {
+    const moonDisc = moonOnScreen(w, h);
     camDir.copy(camera.position).normalize();
     const placed = [];
     const safe = safeArea();
@@ -730,7 +745,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
         const dot = it.home && dotOnly();
         const box = { l: x - bw / 2, r: x + bw / 2, t: dot ? y - bh / 2 : y - bh, b: dot ? y + bh / 2 : y };
         const off = x < -60 || x > w + 60 || (!it.home && (y - bh < safe.top || y > h - safe.bottom));
-        const clash = !off && !it.home && placed.some(p => box.l < p.r + 4 && box.r > p.l - 4 && box.t < p.b + 4 && box.b > p.t - 4);
+        const clash = !off && !it.home && ((moonDisc && coversBox(moonDisc, box)) || placed.some(p => box.l < p.r + 4 && box.r > p.l - 4 && box.t < p.b + 4 && box.b > p.t - 4));
         if (!clash && !off) {
           placed.push(box);
           const el = element(m);

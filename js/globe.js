@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { FrameLayer, FrameSync } from './frames.js';
 import { RADAR_BOX } from './data.js';
-import { CONSTELLATIONS, PLANETS, planetPositions } from './sky.js';
+import { CONSTELLATIONS, PLANETS, planetPositions, moonPosition } from './sky.js';
 
 // The base imagery ships with the site (tools/fetch-earth.mjs). NASA GIBS
 // renders whole-Earth images on request, which took 4-5 seconds at this size;
@@ -401,14 +401,90 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     for (const { mat } of nameMats.values()) { mat.map.dispose(); mat.dispose(); }
     nameMats.clear();
     placeSky();
+    scene.remove(moonName);
+    moonName = nameSprite(skyName('moon'), true);
+    scene.add(moonName);
+    placeMoon(lastGmst);
     skyNameOpacity = -1; // the new names start hidden: fade them back in
     invalidate();
   }
 
+  // The Moon: a sphere lit by the same Sun as the Earth, so its phase is
+  // right from wherever you look and its bright side points at the Sun. It
+  // sits at its real distance (60 Earth radii) but is drawn 4 times its
+  // size, so the phase reads when zoomed out. The near side faces the Earth.
+  const MOON_DIST = 60, MOON_R = 0.273 * 4;
+  const moon = new THREE.Mesh(
+    new THREE.SphereGeometry(MOON_R, 48, 24),
+    new THREE.ShaderMaterial({
+      uniforms: { sunDir: uniforms.sunDir },
+      vertexShader: `
+        varying vec3 vN, vObj;
+        void main() {
+          vObj = normalize(position);
+          vN = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        uniform vec3 sunDir;
+        varying vec3 vN, vObj;
+        // A dark sea (mare) centred at selenographic lat/lon, radius in degrees.
+        float mare(float lat, float lon, float rad, vec2 p) {
+          vec2 d = vec2((p.y - lon) * cos(radians(lat)), p.x - lat);
+          return 1.0 - smoothstep(rad * 0.55, rad, length(d));
+        }
+        void main() {
+          // Selenographic coordinates: +z faces the Earth, east to the right.
+          vec2 p = vec2(degrees(asin(vObj.y)), degrees(atan(vObj.x, vObj.z)));
+          float sea = 0.0;
+          sea = max(sea, mare(33.0, -16.0, 18.0, p));  // Imbrium
+          sea = max(sea, mare(28.0, 17.0, 11.0, p));   // Serenitatis
+          sea = max(sea, mare(8.0, 31.0, 12.0, p));    // Tranquillitatis
+          sea = max(sea, mare(17.0, 59.0, 8.0, p));    // Crisium
+          sea = max(sea, mare(-8.0, 51.0, 9.0, p));    // Fecunditatis
+          sea = max(sea, mare(-15.0, 35.0, 6.0, p));   // Nectaris
+          sea = max(sea, mare(-21.0, -17.0, 9.0, p));  // Nubium
+          sea = max(sea, mare(15.0, -57.0, 22.0, p));  // Procellarum
+          sea = max(sea, mare(-24.0, -39.0, 7.0, p));  // Humorum
+          sea = max(sea, mare(56.0, 5.0, 7.0, p));     // Frigoris
+          float tycho = mare(-43.0, -11.0, 3.0, p);
+          vec3 albedo = mix(vec3(0.78, 0.77, 0.74), vec3(0.42, 0.42, 0.44), sea * 0.85) + tycho * 0.12;
+          float lit = smoothstep(-0.03, 0.12, dot(normalize(vN), sunDir));
+          // A faint earthshine keeps the dark side just visible.
+          gl_FragColor = vec4(albedo * (0.035 + lit * 1.05), 1.0);
+        }`,
+    })
+  );
+  scene.add(moon);
+  // The Sun: a glow far out in its real direction (the Earth hides it when
+  // it's behind), so you can always tell where the light comes from.
+  const sunGlow = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const x = c.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,250,1)'); g.addColorStop(0.09, 'rgba(255,250,225,1)'); g.addColorStop(0.16, 'rgba(255,225,160,0.55)');
+    g.addColorStop(0.45, 'rgba(255,200,120,0.12)'); g.addColorStop(1, 'rgba(255,190,110,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    sp.scale.set(16, 16, 1);
+    return sp;
+  })();
+  scene.add(sunGlow);
+  function placeMoon(gmst) {
+    const m = moonPosition();
+    moon.position.copy(toVec(m.dec, m.ra * 15 - gmst, MOON_DIST));
+    moon.lookAt(0, 0, 0);
+    moonName.position.copy(toVec(m.dec - 2.2, m.ra * 15 - gmst, MOON_DIST));
+  }
+  let moonName = nameSprite(skyName('moon'), true);
+  scene.add(moonName);
+
   function updateSun() {
     const a = astro();
     uniforms.sunDir.value.copy(toVec(a.sunLat, a.sunLon));
+    sunGlow.position.copy(uniforms.sunDir.value).multiplyScalar(74);
     placeSky(a.gmst);
+    placeMoon(a.gmst);
     invalidate();
     return a;
   }

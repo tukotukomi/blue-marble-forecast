@@ -128,3 +128,19 @@ export function planetPositions(date = new Date()) {
   }
   return out;
 }
+
+// Where the Moon appears from Earth's centre (good to well under a degree):
+// { ra (hours), dec (degrees), km }. The main terms of the lunar theory.
+export function moonPosition(date = new Date()) {
+  const d = date.getTime() / 864e5 + 2440587.5 - 2451545;
+  const r = x => (((x % 360) + 360) % 360) * D2R;
+  const L = r(218.316 + 13.176396 * d), M = r(134.963 + 13.064993 * d), F = r(93.272 + 13.22935 * d);
+  const D = r(297.850 + 12.190749 * d), Ms = r(357.529 + 0.98560028 * d);
+  const lon = L + D2R * (6.289 * Math.sin(M) + 1.274 * Math.sin(2 * D - M) + 0.658 * Math.sin(2 * D) + 0.214 * Math.sin(2 * M) - 0.186 * Math.sin(Ms) - 0.114 * Math.sin(2 * F));
+  const lat = D2R * (5.128 * Math.sin(F) + 0.281 * Math.sin(M + F) + 0.278 * Math.sin(M - F) + 0.173 * Math.sin(2 * D - F));
+  const km = 385001 - 20905 * Math.cos(M) - 3699 * Math.cos(2 * D - M) - 2956 * Math.cos(2 * D);
+  const eps = 23.43928 * D2R;
+  const x = Math.cos(lat) * Math.cos(lon), y = Math.cos(lat) * Math.sin(lon), z = Math.sin(lat);
+  const ye = y * Math.cos(eps) - z * Math.sin(eps), ze = y * Math.sin(eps) + z * Math.cos(eps);
+  return { ra: ((Math.atan2(ye, x) / D2R + 360) % 360) / 15, dec: Math.asin(ze) / D2R, km };
+}

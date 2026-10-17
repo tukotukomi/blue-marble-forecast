@@ -76,13 +76,11 @@ state.viewing = state.current ? { ...state.current } : state.home;
 try { localStorage.removeItem('fc.viewing'); } catch { /* storage unavailable */ }
 
 // Dock order; the app still opens on 'now' (see start()).
-const VIEWS = ['places', 'globe', 'now', 'today', 'tomorrow', 'week', 'region', 'uv', 'laundry'];
+const VIEWS = ['places', 'globe', 'now', 'week', 'region', 'uv', 'laundry'];
 
 const ico = d => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const DOCK_ICONS = {
   now: ico('<path d="M10 14.5V4a2 2 0 1 1 4 0v10.5a4 4 0 1 1-4 0Z"/><path d="M12 9v7"/>'),
-  today: ico('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
-  tomorrow: ico('<path d="M4 18h16M7 18a5 5 0 0 1 10 0"/><path d="M12 3v5M9.5 5.5 12 3l2.5 2.5"/>'),
   week: ico('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
   region: ico('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/>'),
   uv: ico('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/><path d="M12 9a3 3 0 0 0 0 6" fill="currentColor"/>'),
@@ -299,7 +297,7 @@ async function loadLocation() {
         Object.assign(v, { name: nws.place.name, region: nws.place.region, cc: 'US', near: undefined, mine: undefined });
         renderTop(); updateMarkers();
       }
-      if (['now', 'today', 'tomorrow'].includes(state.view)) render(false);
+      if (['now', 'week'].includes(state.view)) render(false);
     }).catch(() => {});
   }
 }
@@ -436,6 +434,16 @@ function revealDockButton(id, smooth = true) {
   track.scrollTo({ left: dockAim, behavior: smooth ? 'smooth' : 'auto' });
 }
 
+// Open one day from the 10-Day list (null: back to the list, focusing the
+// day that was open so keyboard and controller users keep their place).
+function openWeekDay(i) {
+  blip('select');
+  if (i != null) lastWeekDay = i;
+  weekDay = i;
+  render(true);
+  setTimeout(() => (i == null ? $(`.week-day[data-i="${lastWeekDay}"]`) : $('#week-back'))?.focus({ preventScroll: true }), 200);
+}
+
 // ---------- view switching ----------
 // On phones, Now opens close in (about 500 km across the screen) so the
 // place and its weather fill the small view; the other screens keep the
@@ -448,6 +456,7 @@ function go(id, { sound = true } = {}) {
   if (id !== 'globe' && id !== 'region') setExplore(false);
   setCollapsed(false);
   state.view = id;
+  weekDay = null; // 10-Day always opens on its list
   dock.querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.view === id ? 'page' : 'false'));
   revealDockButton(id);
   document.body.dataset.view = id;
@@ -471,7 +480,7 @@ function step(dir) {
 let swapTimer;
 function render(animate) {
   renderCalm();
-  $('#panel-title').textContent = t(`view.${state.view}.title`);
+  $('#panel-title').textContent = weekDay != null && state.fc ? dayTitle(weekDay) : t(`view.${state.view}.title`);
   const panel = $('#panel');
   const draw = () => {
     if (lastError) { $('#panel-date').textContent = ''; renderError(); return; }
@@ -480,7 +489,7 @@ function render(animate) {
       $('#panel-date').textContent = '';
       return;
     }
-    $('#panel-date').textContent = dateLong(state.fc.daily.time[state.view === 'tomorrow' ? 1 : 0]);
+    $('#panel-date').textContent = dateLong(state.fc.daily.time[weekDay ?? 0]);
     $('#panel-body').innerHTML = (RENDER[state.view] || (() => ''))();
     AFTER[state.view]?.();
   };
@@ -518,20 +527,26 @@ function blocksFor(dayIndex) {
   }).filter(Boolean);
 }
 
-function dayScreen(i) {
-  const d = dayRow(state.fc, i);
-  const desc = describe(d.code, true);
-  const blocks = blocksFor(i).map(b => `<div class="block${b.past ? ' past' : ''}">
+// Morning, afternoon, evening and overnight for day i.
+const blocksHTML = i => `<div class="blocks">${blocksFor(i).map(b => `<div class="block${b.past ? ' past' : ''}">
       <div class="block-label">${esc(b.label)}</div><div class="block-range">${b.range}</div>
       ${iconFor(b.code, b.isDay, { size: 72 })}
       <div class="block-temp">${T(b.temp)}</div>
       <div class="pop" title="${esc(t('pop.title'))}">${dropGlyph()}${b.pop}%</div>
-    </div>`).join('');
+    </div>`).join('')}</div>`;
+
+// The National Weather Service's own words for day i (U.S. only).
+function nwsHTML(i) {
   const date = state.fc.daily.time[i];
   const periods = (state.nws?.periods || []).filter(p => p.startTime.slice(0, 10) === date).slice(0, 2);
-  const nws = periods.length ? `<div class="nws"><div class="nws-head">${esc(t('nws.head', { office: state.nws.office || '' }))}</div>
+  return periods.length ? `<div class="nws"><div class="nws-head">${esc(t('nws.head', { office: state.nws.office || '' }))}</div>
     ${englishOnly()}
     ${periods.map(p => `<p lang="en"><b>${esc(p.name)}:</b> ${esc(p.detailedForecast)}</p>`).join('')}</div>` : '';
+}
+
+function dayScreen(i) {
+  const d = dayRow(state.fc, i);
+  const desc = describe(d.code, true);
   return `${i === 0 ? alertsHTML() : ''}
     <div class="day-hero">
       ${iconFor(d.code, true, { size: 150, label: desc.label })}
@@ -541,8 +556,12 @@ function dayScreen(i) {
         <div class="pop big">${dropGlyph()}${esc(t('day.pop', { p: d.pop ?? 0 }))}</div>
       </div>
     </div>
-    <div class="blocks">${blocks}</div>${nws}`;
+    ${blocksHTML(i)}${nwsHTML(i)}`;
 }
+
+// The 10-Day screen shows its list, or one day opened from it (weekDay).
+let weekDay = null, lastWeekDay = 0;
+const dayTitle = i => (i === 0 ? t('calm.today') : i === 1 ? t('day.tomorrow') : dayName(state.fc.daily.time[i]));
 
 const dropGlyph = () => `<svg viewBox="0 0 10 12" width="10" height="12" aria-hidden="true"><path d="M5 0C7 3 9 5.5 9 7.6A4 4 0 0 1 1 7.6C1 5.5 3 3 5 0Z" fill="currentColor"/></svg>`;
 
@@ -607,21 +626,28 @@ const RENDER = {
         <div class="stat"><span>${esc(t('stat.uv'))}</span><b>${Math.round(uvNow)} · ${esc(uvInfo(uvNow).cat)}</b></div>
         <div class="stat"><span>${esc(t('stat.sunrise'))}</span><b>${isoClock(d.sunrise)}</b></div>
         <div class="stat"><span>${esc(t('stat.sunset'))}</span><b>${isoClock(d.sunset)}</b></div>
-      </div>`;
+      </div>
+      <h3 class="sec-head">${esc(t('view.today.title'))}</h3>
+      ${blocksHTML(0)}${nwsHTML(0)}`;
   },
-  today: () => dayScreen(0),
-  tomorrow: () => dayScreen(1),
+  // Every day we have (10) as the original channel's tall cards, in a strip
+  // that scrolls sideways; each card opens that day's forecast.
   week() {
-    const days = [1, 2, 3, 4, 5].map(i => dayRow(state.fc, i));
-    return `<div class="week">
-      ${days.map(d => `<div class="day-card">
-        <div class="day-name">${esc(dayName(d.date, 'short'))}</div>
-        <div class="day-date">${esc(dateShort(d.date))}</div>
-        ${iconFor(d.code, true, { size: 76, label: describe(d.code).label })}
-        <div class="day-cond">${esc(describe(d.code).label)}</div>
-        <div class="day-hilo"><b class="hi">${T(d.hi)}</b><b class="lo">${T(d.lo)}</b></div>
-        <div class="pop" title="${esc(t('pop.title'))}">${dropGlyph()}${d.pop ?? 0}%</div>
-      </div>`).join('')}</div>`;
+    if (weekDay != null) {
+      return `<button type="button" class="pill small week-back" id="week-back">‹ ${esc(t('week.back'))}</button>${dayScreen(weekDay)}`;
+    }
+    const days = state.fc.daily.time.map((_, i) => dayRow(state.fc, i));
+    return `<ul class="week" aria-label="${esc(t('view.week.title'))}">${days.map((d, i) => {
+      const label = describe(d.code).label;
+      return `<li><button type="button" class="day-card week-day" data-i="${i}" aria-label="${esc(`${dayTitle(i)}, ${dateShort(d.date)}: ${label}, ${T(d.hi)} / ${T(d.lo)}`)}">
+        <span class="day-name">${esc(i < 2 ? dayTitle(i) : dayName(d.date, 'short'))}</span>
+        <span class="day-date">${esc(dateShort(d.date))}</span>
+        ${iconFor(d.code, true, { size: 76 })}
+        <span class="day-cond">${esc(label)}</span>
+        <span class="day-hilo"><b class="hi">${T(d.hi)}</b><b class="lo">${T(d.lo)}</b></span>
+        <span class="pop">${dropGlyph()}${d.pop ?? 0}%</span>
+      </button></li>`;
+    }).join('')}</ul>`;
   },
   region() {
     const d0 = state.fc.daily.time[0], d1 = state.fc.daily.time[1];
@@ -725,6 +751,17 @@ const RENDER = {
 };
 
 const AFTER = {
+  week() {
+    document.querySelectorAll('.week-day').forEach(b => b.addEventListener('click', () => openWeekDay(+b.dataset.i)));
+    // A mouse wheel scrolls the strip sideways.
+    $('.week')?.addEventListener('wheel', e => {
+      const strip = e.currentTarget;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || strip.scrollWidth <= strip.clientWidth) return;
+      e.preventDefault();
+      strip.scrollBy({ left: e.deltaY });
+    }, { passive: false });
+    $('#week-back')?.addEventListener('click', () => openWeekDay(null));
+  },
   region() {
     document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
       state.regionDay = +b.dataset.day;
@@ -1857,7 +1894,7 @@ document.addEventListener('keydown', e => {
   }
   if (!state.started || document.querySelector('dialog[open]') || !langMenu.hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
   if (e.key === 'Escape') {
-    if (pickCard) closePick(); else setExplore(false);
+    if (pickCard) closePick(); else if (weekDay != null) openWeekDay(null); else setExplore(false);
     return;
   }
   if (document.body.classList.contains('explore')) return;
@@ -1908,6 +1945,7 @@ initGamepad({
     if (!langMenu.hidden) closeLangMenu(true);
     else if (dlg) dlg.close();
     else if (pickCard) closePick();
+    else if (weekDay != null) openWeekDay(null);
     else if (document.body.classList.contains('explore')) setExplore(false);
     else document.activeElement?.blur?.();
   },

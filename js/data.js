@@ -30,7 +30,7 @@ const r2 = n => Math.round(n * 100) / 100;
 
 export async function fetchForecast(lat, lon) {
   const p = new URLSearchParams({
-    latitude: r2(lat), longitude: r2(lon), models: 'gfs_seamless', timezone: 'auto', forecast_days: 7,
+    latitude: r2(lat), longitude: r2(lon), models: 'gfs_seamless', timezone: 'auto', forecast_days: 10,
     current: 'temperature_2m,apparent_temperature,weather_code,is_day,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation',
     hourly: 'temperature_2m,weather_code,precipitation_probability,uv_index,relative_humidity_2m,wind_speed_10m,is_day,cloud_cover',
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunshine_duration,daylight_duration,sunrise,sunset,wind_speed_10m_max',

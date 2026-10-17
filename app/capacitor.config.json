@@ -1,0 +1,11 @@
+{
+  "appId": "com.bluemarbleforecast.app",
+  "appName": "Blue Marble Forecast",
+  "webDir": "www",
+  "backgroundColor": "#050b18",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#050b18",
+    "scrollEnabled": false
+  }
+}

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy · Blue Marble Forecast</title>
+  <meta name="description" content="How Blue Marble Forecast handles your data: no accounts, no tracking, no ads.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <style>
+    :root { --bg: #050b18; --card: #0d1a33; --ink: #e8eef8; --soft: #a9b8cf; --link: #7cc4ff; }
+    @media (prefers-color-scheme: light) { :root { --bg: #eef4fb; --card: #fff; --ink: #142033; --soft: #4a5a72; --link: #1f6fc4; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+    header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+    header img { width: 56px; height: 56px; border-radius: 13px; }
+    h1 { font-size: 28px; line-height: 1.2; margin: 0; }
+    h2 { font-size: 19px; margin: 32px 0 6px; }
+    p, li { color: var(--soft); }
+    strong { color: var(--ink); }
+    a { color: var(--link); }
+    ul { padding-left: 22px; }
+    .card { background: var(--card); border-radius: 14px; padding: 4px 18px; margin-top: 20px; }
+    .fine { font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="../icons/icon-192.png" alt="">
+    <h1>Blue Marble Forecast privacy policy</h1>
+  </header>
+  <p class="fine">Last updated 17 October 2026. This covers the Blue Marble Forecast iPhone app and the website at bluemarbleforecast.com.</p>
+
+  <div class="card">
+    <p><strong>In short:</strong> there are no accounts, no ads, no analytics and no tracking. Your places and settings stay on your device. To show a forecast, the place's coordinates are sent to public weather services. If you choose to send feedback, what you write goes to the developer.</p>
+  </div>
+
+  <h2>Your location</h2>
+  <p>If you allow it, your device's location is used to show the weather where you are. It is kept only on your device; we never receive it or store it on a server. You can turn location access off at any time in your device's settings, and the app works without it.</p>
+
+  <h2>Weather and map data</h2>
+  <p>To get a forecast, the app sends the coordinates of the place you're viewing (your current location or a place you picked) straight from your device to these public services:</p>
+  <ul>
+    <li><a href="https://open-meteo.com/en/terms">Open-Meteo</a>: forecasts, and place search (what you type in the search box).</li>
+    <li><a href="https://www.weather.gov/disclaimer">US National Weather Service</a> (api.weather.gov): forecast text and alerts for places in the United States.</li>
+  </ul>
+  <p>Radar, satellite and map images come from NOAA, NASA, Environment and Climate Change Canada, Germany's Deutscher Wetterdienst, EUMETNET OPERA (through a small relay we run that only passes the files along and doesn't record them) and the Iowa Environmental Mesonet. These requests ask for an area of the map, such as the part of the Earth on screen or, for Calm View's satellite photo, the area around the place you're viewing. Like any website, each service sees your device's IP address when it answers. Fonts come from Google Fonts and the website's 3D library from jsDelivr.</p>
+
+  <h2>Stored on your device</h2>
+  <p>Your home city, My Places, your last location, and settings such as units, language and map layers are saved in the app's local storage on your device. They are never sent to us. Deleting the app (or clearing the website's data) removes them.</p>
+
+  <h2>Feedback you send</h2>
+  <p>The app has an optional form for bug reports and ideas. Only if you send it, we receive:</p>
+  <ul>
+    <li>your message, and a screenshot if you attach one;</li>
+    <li>an email address, only if you give one so we can reply;</li>
+    <li>details that help fix bugs: the app version, device and browser type, screen size, language, which screen and place you were viewing, which map layers were on, and the time.</li>
+  </ul>
+  <p>Feedback is stored in a private issue tracker on GitHub that only the developer can see, and is used only to improve the app. To have your feedback deleted, contact us below.</p>
+
+  <h2>Children</h2>
+  <p>The app doesn't collect personal information from anyone, including children under 13.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the new version will be posted here with a new date.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or deletion requests: use <strong>Send feedback</strong> in the app's Settings, and include an email address so we can reply.</p>
+</main>
+</body>
+</html>

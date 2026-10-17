@@ -13,7 +13,8 @@
 // The repo is set in wrangler.toml (REPO). The app's address for this Worker
 // is FEEDBACK_URL in js/feedback.js.
 
-const ORIGINS = /^(https:\/\/(www\.)?bluemarbleforecast\.com|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/;
+// The site, the local dev server, and the iOS app (Capacitor's origin).
+const ORIGINS = /^(https:\/\/(www\.)?bluemarbleforecast\.com|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?|capacitor:\/\/localhost)$/;
 const TYPES = { bug: 'Bug', idea: 'Idea' };
 const MAX_MESSAGE = 5000;
 const MAX_SHOT = 3 * 1024 * 1024; // the app shrinks screenshots well below this

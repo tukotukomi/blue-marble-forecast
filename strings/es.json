@@ -265,6 +265,7 @@
   "globe.sun": "Ahora mismo, el sol está justo encima de {coord}.",
   "globe.noWebgl": "Tu navegador tiene WebGL desactivado, así que no se puede mostrar el globo 3D.",
 
+  "about.privacy": "Política de privacidad",
   "about.title": "Acerca de Blue Marble Forecast",
   "about.intro": "Una versión moderna y no oficial del Canal del Tiempo de Wii (2006–2013). No está afiliada ni respaldada por Nintendo. Todo aquí usa datos públicos y gratuitos, en su mayoría de agencias científicas del gobierno de EE. UU.",
   "about.sourcesTitle": "De dónde vienen los datos",

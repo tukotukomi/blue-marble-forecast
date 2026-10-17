@@ -6,6 +6,7 @@ import { initGamepad } from './gamepad.js';
 import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createCalmSky } from './calm.js';
 import { moonPhase } from './sky.js';
+import { isApp, geoAvailable, geoPermission, getPosition } from './native.js';
 import { VERSION, BUILD } from './version.js';
 import { initFeedback } from './feedback.js';
 import { createGlobe } from './globe.js';
@@ -1158,7 +1159,7 @@ async function runSearch(q) {
   }
 }
 $('#loc-geo').addEventListener('click', async () => {
-  if (!navigator.geolocation) return toast(t('geo.unsupported'));
+  if (!geoAvailable()) return toast(t('geo.unsupported'));
   $('#loc-geo').disabled = true;
   const loc = await locate({ ask: true });
   $('#loc-geo').disabled = false;
@@ -1206,27 +1207,22 @@ const HERE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="
 // A copy of a place without the "current location" mark (for home or saving).
 const fixedPlace = ({ current, at, ...place }) => place;
 
-async function geoPermission() {
-  try { return (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { return 'unknown'; }
-}
-
 // Find the device. ask: false only uses permission already given (no prompt).
 async function locate({ ask = true } = {}) {
-  if (!navigator.geolocation) return null;
+  if (!geoAvailable()) return null;
   if (!ask && (await geoPermission()) !== 'granted') return null;
-  return new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => {
-    const { latitude: lat, longitude: lon } = pos.coords;
+  return getPosition().then(({ lat, lon }) => {
     const near = nearestCity(lat, lon, 1);
     const loc = { current: true, region: '', lat, lon, picked: true, ...(near ? { near: near.name, cc: near.cc } : { mine: true, cc: '' }) };
     geoDenied = false;
     state.current = loc;
     store.set('current', { ...loc, at: Date.now() });
     if (state.view === 'places') render(false);
-    resolve(loc);
+    return loc;
   }, err => {
-    geoDenied = err.code === 1;
-    resolve(null);
-  }, { timeout: 10000, maximumAge: 10 * 60e3 }));
+    geoDenied = !!err?.denied;
+    return null;
+  });
 }
 
 // At start: move to the current location unless the visitor has already
@@ -1234,7 +1230,7 @@ async function locate({ ask = true } = {}) {
 // when Start is tapped. Refused: home.
 async function startAtCurrentLocation() {
   const permission = await geoPermission();
-  if (permission === 'denied' || !navigator.geolocation) {
+  if (permission === 'denied' || !geoAvailable()) {
     geoDenied = permission === 'denied';
     if (state.viewing.current && !movedByUser) {
       state.current = null;
@@ -1596,7 +1592,7 @@ const feedback = initFeedback({
   details: () => ({
     Build: `${VERSION} · ${BUILD}`,
     Device: navigator.userAgent,
-    'App mode': matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Home-screen app' : 'Browser',
+    'App mode': isApp ? 'iOS app' : matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'Home-screen app' : 'Browser',
     'Screen size': `${screen.width}×${screen.height} @${+devicePixelRatio.toFixed(2)}x, window ${innerWidth}×${innerHeight}`,
     Language: getLang(),
     Screen: state.view + (calm.open ? ' (Calm View)' : ''),
@@ -1753,14 +1749,15 @@ function syncFullscreen() {
 // ---------- home-screen app ----------
 // The service worker lets the installed app open offline and caches the big
 // globe textures (see sw.js). Service workers need https (or localhost).
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+// (Not in the iOS app, which has its files built in.)
+if ('serviceWorker' in navigator && !isApp && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* the site works without it */ });
 }
 const standalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let installPrompt = null; // Chrome/Edge/Android hand us a real install dialog
 function renderInstall() {
-  $('#install').hidden = standalone;
+  $('#install').hidden = standalone || isApp; // the app is already installed
   $('#install-btn').hidden = !installPrompt;
   $('#install-text').textContent = t(installPrompt ? 'install.ready' : isIOS ? 'install.ios' : 'install.other');
 }

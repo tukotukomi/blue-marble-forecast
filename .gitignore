@@ -1,2 +1,6 @@
 # Wrangler (Cloudflare Worker deploy tool) local cache
 .wrangler/
+
+# The iOS app (app/): installed packages and the built web copy
+app/node_modules/
+app/www/

@@ -10,7 +10,7 @@
 // The deployed Cloudflare Worker's URL, ending in "/". The local dev server
 // has a stand-in at /opera-relay/ (see .claude/static-server.ps1).
 const RELAY_URL = 'https://opera-relay.fractalize-studio.workers.dev/';
-const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
+const LOCAL = location.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(location.hostname); // not the iOS app (capacitor://localhost)
 export const OPERA_RELAY = LOCAL ? '/opera-relay/' : RELAY_URL;
 
 // Geographic box around OPERA's grid (its corners and bulging top edge).

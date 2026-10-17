@@ -265,6 +265,7 @@
   "globe.sun": "此刻太阳正位于{coord}的正上方。",
   "globe.noWebgl": "您的浏览器已关闭 WebGL，无法显示 3D 地球。",
 
+  "about.privacy": "隐私政策",
   "about.title": "关于 Blue Marble Forecast",
   "about.intro": "这是 Wii 天气预报频道（2006–2013）的非官方现代重制版，与任天堂无关，也未获其认可。本站全部使用免费的公开数据，主要来自美国政府科学机构。",
   "about.sourcesTitle": "数据来源",

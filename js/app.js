@@ -7,6 +7,8 @@ import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createCalmSky } from './calm.js';
 import { moonPhase } from './sky.js';
 import { isApp, geoAvailable, geoPermission, getPosition } from './native.js';
+import { wakeSupported, keepAwake } from './wakelock.js';
+import { isSpanScreen, hasManyScreens, initSpan, startSpan, stopSpan, spanning, shareLayer, noteInput } from './span.js';
 import { VERSION, BUILD } from './version.js';
 import { initFeedback } from './feedback.js';
 import { createGlobe } from './globe.js';
@@ -846,6 +848,7 @@ async function refreshFrames(name) {
 function setLayer(name, on, save = true) {
   state.layers[name] = on;
   if (save) store.set('layers', state.layers);
+  shareLayer(name, on);
   for (const k of [name, ...ANIM_KEYS.filter(k => SWITCH_OF[k] === name)]) syncLayer(k);
 }
 
@@ -1266,6 +1269,7 @@ async function locate({ ask = true } = {}) {
 // gone elsewhere. Permission given before: quietly. Not decided yet: ask
 // when Start is tapped. Refused: home.
 async function startAtCurrentLocation() {
+  if (isSpanScreen) return; // an extra Span all screens window shows the main window's place
   const permission = await geoPermission();
   if (permission === 'denied' || !geoAvailable()) {
     geoDenied = permission === 'denied';
@@ -1834,11 +1838,14 @@ phone.addEventListener('change', () => { if (!phone.matches) setCollapsed(false)
 // Hides the bars, panel, dock and ticker so the Earth gets the whole screen,
 // which matters most on phones. A small pill brings everything back.
 function setExplore(on) {
+  if (isSpanScreen && !on) return; // the extra span windows are only the globe
+  if (!on && spanning()) stopSpan();
   if (document.body.classList.contains('explore') === on) return;
   document.body.classList.toggle('explore', on);
   $('#explore-exit').hidden = !on;
   if (on) exploreWake();
   else { clearTimeout(exploreIdle); document.body.classList.remove('explore-idle'); }
+  $('#explore-exit span').textContent = t(on && spanning() ? 'span.stop' : 'explore.show');
   closePick();
   closeLangMenu();
   if (on) $('#explore-exit').focus(); else if (['globe', 'region'].includes(state.view)) $('#explore').focus();
@@ -1923,12 +1930,56 @@ function start() {
 }
 $('#start').addEventListener('click', start);
 
+// ---------- keep screen on ----------
+// A Settings switch (wakelock.js), so the globe can stay up for hours
+// without changing the device's sleep settings.
+{
+  const sw = $('#awake-switch');
+  $('#awake-setting').hidden = !wakeSupported;
+  sw.checked = store.get('keepAwake', false);
+  keepAwake('setting', sw.checked);
+  sw.addEventListener('change', async () => {
+    blip('select');
+    store.set('keepAwake', sw.checked);
+    if (!(await keepAwake('setting', sw.checked)) && sw.checked) toast(t('awake.denied'));
+  });
+}
+
+// ---------- span all screens ----------
+// One view of the globe across every monitor (span.js; Chrome and Edge).
+// Shown in Settings only when there's more than one screen.
+if (globe) {
+  const showRow = () => { $('#span-setting').hidden = isSpanScreen || !hasManyScreens(); };
+  showRow();
+  screen.addEventListener?.('change', showRow);
+  initSpan({
+    globe,
+    share: () => ({ place: state.viewing, layers: state.layers }),
+    receive({ place, layers }) {
+      for (const [k, on] of Object.entries(layers || {})) if (state.layers[k] !== on) setLayer(k, on, false);
+      if (place && !sameLoc(place, state.viewing)) {
+        state.viewing = { ...place };
+        renderTop(); updateMarkers(); loadLocation();
+      }
+    },
+    fillLabel: () => t('span.fill'),
+  });
+  $('#span-btn').addEventListener('click', async () => {
+    blip('select');
+    $('#info-dialog').close();
+    if (state.view !== 'globe') go('globe', { sound: false });
+    const result = await startSpan();
+    if (result === 'ok' || result === 'popups') setExplore(true);
+    if (result !== 'ok') toast(t(`span.${result}`));
+  });
+}
+
 // ---------- game controller ----------
 initGamepad({
   started: () => state.started,
   start,
-  pan: (dx, dy) => { closePick(); exploreWake(); globe?.pan(dx, dy); },
-  zoom: f => { exploreWake(); globe?.zoom(f); },
+  pan: (dx, dy) => { closePick(); exploreWake(); noteInput(); globe?.pan(dx, dy); },
+  zoom: f => { exploreWake(); noteInput(); globe?.zoom(f); },
   // A with nothing selected: open the spot under the centre reticle (Globe and
   // Region), or the middle of the visible globe on the forecast screens.
   pickCenter() {
@@ -1991,3 +2042,12 @@ globeShown.then(() => {
   // Restore the layers the visitor left switched on.
   for (const [name, on] of Object.entries(state.layers)) if (on || name === 'night' || name === 'labels') setLayer(name, on, false);
 });
+
+// An extra Span all screens window: straight to the globe (after the intro
+// set-up above), with no start screen and no sound.
+if (isSpanScreen && globe) {
+  document.body.classList.add('span-screen');
+  state.music = false;
+  start();
+  setExplore(true);
+}

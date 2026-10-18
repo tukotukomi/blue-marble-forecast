@@ -215,7 +215,7 @@
   "laundry.none": "No hay datos de secado para esta ubicación.",
 
 
-  "globe.hint": "Arrastra para girar la Tierra, usa la rueda o pellizca para hacer zoom y toca cualquier lugar para ver su pronóstico. Aleja el zoom al máximo para encontrar la Osa Mayor y Orión.",
+  "globe.hint": "Arrastra para girar la Tierra, usa la rueda o pellizca para hacer zoom y toca cualquier lugar para ver su pronóstico. Aleja el zoom al máximo para encontrar la Luna, los planetas y las constelaciones.",
   "globe.night": "Día y noche en tiempo real",
   "globe.precip": "Lluvia y nieve (satélites de la NASA)",
   "globe.radar": "Radar de alta resolución",
@@ -264,6 +264,19 @@
   "globe.sun": "Ahora mismo, el sol está justo encima de {coord}.",
   "globe.noWebgl": "Tu navegador tiene WebGL desactivado, así que no se puede mostrar el globo 3D.",
 
+  "awake.title": "Mantener la pantalla encendida",
+  "awake.denied": "Tu navegador no permitió mantener la pantalla encendida (el ahorro de batería puede impedirlo). Lo intentará de nuevo la próxima vez que abras la app.",
+  "awake.hint": "Evita que la pantalla se atenúe o se suspenda mientras Blue Marble Forecast está abierto, para dejar el globo durante horas. No cambia los ajustes de tu dispositivo. Usa más batería.",
+  "span.title": "Extender a todas las pantallas",
+  "span.hint": "Muestra una sola vista del globo en todos tus monitores, a pantalla completa. Tu navegador pedirá permiso una vez para colocar ventanas en tus pantallas.",
+  "span.button": "Extender",
+  "span.fill": "Haz clic para llenar esta pantalla",
+  "span.stop": "Dejar de extender",
+  "span.again": "¡Gracias! Elige Extender a todas las pantallas otra vez para empezar.",
+  "span.denied": "Tu navegador no lo permitió. Permite la gestión de ventanas para este sitio (el icono de la barra de direcciones) e inténtalo de nuevo.",
+  "span.one": "Solo se encontró una pantalla.",
+  "span.popups": "Se omitieron algunas pantallas. Permite las ventanas emergentes para este sitio y elige Extender a todas las pantallas de nuevo.",
+  "span.unsupported": "Para extender a varias pantallas necesitas Chrome o Edge en una computadora.",
   "about.privacy": "Política de privacidad",
   "about.title": "Acerca de Blue Marble Forecast",
   "about.intro": "Una versión moderna y no oficial del Canal del Tiempo de Wii (2006–2013). No está afiliada ni respaldada por Nintendo. Todo aquí usa datos públicos y gratuitos, en su mayoría de agencias científicas del gobierno de EE. UU.",

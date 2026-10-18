@@ -716,7 +716,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     if (moonRay.intersectSphere(earthBall, moonHit) && camera.position.distanceTo(moonHit) < far) return null;
     tmp.copy(moon.position).project(camera);
     if (tmp.z > 1 || Math.abs(tmp.x) > 1.3 || Math.abs(tmp.y) > 1.3) return null;
-    const r = (Math.tan(Math.asin(MOON_R / far)) / Math.tan((camera.fov * D2R) / 2)) * (h / 2);
+    const r = (Math.tan(Math.asin(MOON_R / far)) / Math.tan((camera.fov * D2R) / 2)) * ((span ? span.H : h) / 2);
     return { x: (tmp.x * 0.5 + 0.5) * w, y: (-tmp.y * 0.5 + 0.5) * h, r: r + 6 };
   }
   const coversBox = (c, b) => Math.hypot(c.x - Math.max(b.l, Math.min(c.x, b.r)), c.y - Math.max(b.t, Math.min(c.y, b.b))) < c.r;
@@ -877,10 +877,15 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   let slowFrames = 0;
   renderer.setPixelRatio(pixelRatio);
 
+  // Span all screens (span.js): this window shows one slice of a picture
+  // spread over several monitors. { W, H }: the whole picture; { x, y }: this
+  // window's top-left corner in it (CSS px). null: the normal single view.
+  let span = null;
+
   function resize() {
     const w = host.clientWidth, h = host.clientHeight;
     renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+    camera.aspect = span ? span.W / span.H : w / h;
     camera.updateProjectionMatrix();
     invalidate();
   }
@@ -936,7 +941,8 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
 
     camera.position.copy(toVec(cam.lat, cam.lon, cam.dist));
     camera.lookAt(0, 0, 0);
-    if (Math.abs(offset.x) > 0.5 || Math.abs(offset.y) > 0.5) camera.setViewOffset(w, h, -offset.x, offset.y, w, h);
+    if (span) camera.setViewOffset(span.W, span.H, span.x, span.y, w, h);
+    else if (Math.abs(offset.x) > 0.5 || Math.abs(offset.y) > 0.5) camera.setViewOffset(w, h, -offset.x, offset.y, w, h);
     else camera.clearViewOffset();
     constMat.opacity = THREE.MathUtils.clamp((cam.dist - 3) / 2, 0, 0.55);
     const names = skyNames ? THREE.MathUtils.clamp((cam.dist - 3.4) / 1.6, 0, 0.9) : 0;
@@ -1035,6 +1041,26 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       if (!interactive()) return;
       anim = null; lastInteract = performance.now();
       zoomBy(factor);
+    },
+    // Span all screens (span.js).
+    setSpan(s) {
+      const key = s && `${s.W},${s.H},${Math.round(s.x)},${Math.round(s.y)}`;
+      if (key === (span && `${span.W},${span.H},${Math.round(span.x)},${Math.round(span.y)}`)) return;
+      span = s;
+      resize();
+    },
+    camState: () => ({ lat: cam.lat, lon: cam.lon, dist: cam.dist }),
+    // Show what another window's camera shows (and hold off the idle spin).
+    follow(c) {
+      anim = null; vel.lat = vel.lon = 0;
+      cam.lat = c.lat; cam.lon = c.lon; cam.dist = c.dist;
+      lastInteract = performance.now();
+      invalidate();
+    },
+    // The radar clock's current step (ms), and jumping to another window's.
+    clockStep: () => sync.steps[sync.step] ?? null,
+    syncClock(t) {
+      if (t != null && sync.steps[sync.step] !== t) { sync.seekTime(t); invalidate(); }
     },
     pickAt(x, y) {
       if (!interactive()) return false;

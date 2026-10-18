@@ -215,7 +215,7 @@
   "laundry.none": "No laundry data for this location.",
 
 
-  "globe.hint": "Drag to spin the Earth, scroll or pinch to zoom, and tap anywhere for its forecast. Zoom all the way out to find the Big Dipper and Orion.",
+  "globe.hint": "Drag to spin the Earth, scroll or pinch to zoom, and tap anywhere for its forecast. Zoom all the way out to find the Moon, the planets and the constellations.",
   "globe.night": "Live day & night",
   "globe.precip": "Rain & snow (NASA satellites)",
   "globe.radar": "High resolution radar",
@@ -264,6 +264,19 @@
   "globe.sun": "The sun is directly over {coord} right now.",
   "globe.noWebgl": "Your browser has WebGL turned off, so the 3D globe can't be shown.",
 
+  "awake.title": "Keep screen on",
+  "awake.denied": "Your browser didn’t allow keeping the screen on (battery saver can block it). It will try again next time you open the app.",
+  "awake.hint": "Stops the screen from dimming or going to sleep while Blue Marble Forecast is showing, so you can leave the globe up for hours. Your device's own settings don't change. Uses more battery.",
+  "span.title": "Span all screens",
+  "span.hint": "Spread one view of the globe across all your monitors, in full screen. Your browser asks once for permission to place windows on your screens.",
+  "span.button": "Span",
+  "span.fill": "Click to fill this screen",
+  "span.stop": "Stop spanning",
+  "span.again": "Thanks! Now choose Span all screens once more to start.",
+  "span.denied": "Your browser didn't allow it. Allow window management for this site (the icon in the address bar), then try again.",
+  "span.one": "Only one screen was found.",
+  "span.popups": "Some screens were skipped. Allow pop-ups for this site, then choose Span all screens again.",
+  "span.unsupported": "Spanning screens needs Chrome or Edge on a computer.",
   "about.privacy": "Privacy policy",
   "about.title": "About Blue Marble Forecast",
   "about.intro": "A modern, unofficial remake of the Wii Forecast Channel (2006–2013). It isn't affiliated with or endorsed by Nintendo. Everything here uses free, public data, mostly from U.S. government science agencies.",

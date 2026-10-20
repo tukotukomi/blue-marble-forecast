@@ -373,6 +373,8 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
 .lvl-0 { background: #e8f6ea; color: #2e7d3a; }
 
 .toggles { display: grid; gap: 10px; margin: 6px 0 4px; }
+/* FUTURE (forecast) and PAST (radar, satellite) above their switches. */
+.toggles-head { grid-column: 1 / -1; margin: 6px 0 -2px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--wii-deep); }
 .switch { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
 .switch input { position: absolute; opacity: 0; }
 .switch span { flex: none; width: 46px; height: 28px; border-radius: 999px; background: #cfd8e3; position: relative; transition: background 0.2s; }

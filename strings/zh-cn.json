@@ -247,6 +247,8 @@
   "src.gdps.desc": "加拿大环境与气候变化部 GDPS 模型 · 15 公里 · 每小时",
   "fcstExt.title": "延长雷达预报",
   "fcstExt.hint": "显示未来 10 天（每 3 小时）而不是 48 小时的预报降水。美国和欧洲模型只能预报 1–2 天，之后各地都使用全球模型。会下载更多数据。",
+  "layers.future": "未来",
+  "layers.past": "过去",
   "globe.fcst": "预报降水（未来 48 小时）",
   "anim.play": "播放",
   "anim.pause": "暂停",

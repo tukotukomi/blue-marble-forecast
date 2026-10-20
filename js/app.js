@@ -52,6 +52,13 @@ function savedLayers() {
     store.set('layers', saved);
     store.set('radarDefaultOn', true);
   }
+  // Once, for everyone: day & night, borders and forecast rain on; the past
+  // layers (satellite rain, radar) off, since the forecast hides them anyway.
+  if (!store.get('fcstDefaultOn', false)) {
+    for (const k of ['night', 'borders', 'fcst', 'sat', 'radar']) delete saved[k];
+    store.set('layers', saved);
+    store.set('fcstDefaultOn', true);
+  }
   return saved;
 }
 
@@ -60,7 +67,7 @@ const state = {
   viewing: null,
   units: store.get('units', /^en-US|^en-LR|^my/.test(navigator.language) ? 'F' : 'C'),
   music: store.get('music', true),
-  layers: { night: true, sat: true, radar: true, borders: true, labels: true, fcst: false, ...savedLayers() },
+  layers: { night: true, sat: false, radar: false, borders: true, labels: true, fcst: true, ...savedLayers() },
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
   regionDay: 0,
   view: 'now',
@@ -988,7 +995,9 @@ function layersHTML() {
   const key = summaryKey();
   const summary = `<div class="anim-summary"><b>${esc(t('anim.summary', { n: on.length }))}</b><span id="anim-summary-time">${esc(key ? frameLabel(key) : '')}</span></div>`;
   return `<div id="layers">
-    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('borders', t('globe.borders'))}${sw('labels', t('globe.labels'))}${sw('fcst', t(state.fcstExtended ? 'globe.fcst10' : 'globe.fcst'))}</div>
+    <div class="toggles">${sw('night', t('globe.night'))}${sw('labels', t('globe.labels'))}${sw('borders', t('globe.borders'))}
+      <h4 class="toggles-head">${esc(t('layers.future'))}</h4>${sw('fcst', t(state.fcstExtended ? 'globe.fcst10' : 'globe.fcst'))}
+      <h4 class="toggles-head">${esc(t('layers.past'))}</h4>${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}</div>
     ${rows ? `<div class="anim${open ? '' : ' collapsed'}"><button type="button" class="anim-play" id="anim-play"></button>
       <div class="anim-rows">${open ? rows : summary}</div>
       <button type="button" class="anim-toggle" id="anim-toggle" aria-expanded="${open}" aria-label="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}" title="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>

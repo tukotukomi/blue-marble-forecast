@@ -247,6 +247,8 @@
   "src.gdps.desc": "Environment and Climate Change Canada GDPS model · 15 km · hourly",
   "fcstExt.title": "Extended radar forecast",
   "fcstExt.hint": "Forecast rain for the next 10 days instead of 48 hours, in 3-hour steps. The U.S. and European models only reach 1–2 days, so further out it's the global model everywhere. Downloads more.",
+  "layers.future": "Future",
+  "layers.past": "Past",
   "globe.fcst": "Forecast rain (next 48h)",
   "anim.play": "Play",
   "anim.pause": "Pause",

@@ -247,6 +247,8 @@
   "src.gdps.desc": "Modelo GDPS de Medio Ambiente y Cambio Climático Canadá · 15 km · cada hora",
   "fcstExt.title": "Pronóstico de radar extendido",
   "fcstExt.hint": "Lluvia pronosticada para los próximos 10 días en lugar de 48 horas, en pasos de 3 horas. Los modelos de EE. UU. y Europa solo llegan a 1 o 2 días, así que más adelante se usa el modelo mundial en todas partes. Descarga más datos.",
+  "layers.future": "Futuro",
+  "layers.past": "Pasado",
   "globe.fcst": "Lluvia pronosticada (próximas 48 h)",
   "anim.play": "Reproducir",
   "anim.pause": "Pausar",

@@ -1,7 +1,7 @@
 import { CITIES } from './cities.js';
 import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js';
 import { fetchForecast, fetchCities, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchGermanRadar, fetchPlaces } from './data.js';
-import { fetchForecastRain } from './forecast-rain.js';
+import { fetchGlobalForecast, fetchRegionalForecast, forecastSpan } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
 import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createCalmSky } from './calm.js';
@@ -791,30 +791,38 @@ const AFTER = {
 // ---------- animated precipitation ----------
 // Three looping layers: NASA IMERG satellite rain & snow (global, 30-minute
 // steps, a few hours behind), high resolution radar (ECCC's North American
-// mosaic, minutes behind) and a 12-hour forecast (HRRR in the U.S., DWD
-// ICON-EU in Europe, GFS elsewhere) around the place being viewed. Once
-// playing they keep playing on every screen until paused.
+// mosaic, minutes behind) and forecast rain for 48 hours or 10 days (ECCC's
+// global GDPS everywhere, with HRRR in the U.S. or DWD ICON-EU in Europe over
+// it near the place being viewed). Once playing they keep playing on every
+// screen until paused.
 const anim = {
   playing: true,
   sat: { frames: [], idx: -1, status: 'off' },   // status: off | loading | ready | error
   radar: { frames: [], idx: -1, status: 'off' },
   radar2: { frames: [], idx: -1, status: 'off' },
   radar3: { frames: [], idx: -1, status: 'off' },
-  fcst: { frames: [], idx: -1, status: 'off' },
+  fcst: { frames: [], idx: -1, status: 'off' },  // regional; status 'none' where there isn't one
+  fcstg: { frames: [], idx: -1, status: 'off' }, // global
 };
-const ANIM_KEYS = ['sat', 'radar', 'radar3', 'radar2', 'fcst'];
+const ANIM_KEYS = ['sat', 'radar', 'radar3', 'radar2', 'fcstg', 'fcst'];
 // Layers that share another layer's switch: "High resolution radar" drives
 // both North America (radar) and Germany (radar2).
-const SWITCH_OF = { radar2: 'radar', radar3: 'radar' };
+const SWITCH_OF = { radar2: 'radar', radar3: 'radar', fcstg: 'fcst' };
 // Individual services (Settings > Data sources). Radar areas are separate
 // animated layers; forecast sources are choices inside the one forecast layer.
-const SOURCE_OF_LAYER = { radar: 'radarNA', radar2: 'radarDE', radar3: 'radarEU' };
+const SOURCE_OF_LAYER = { radar: 'radarNA', radar2: 'radarDE', radar3: 'radarEU', fcstg: 'gdps' };
 const DATA_SOURCES = [
   // Europe (OPERA) needs its relay; it's left out until one is configured.
   { group: 'globe.radar', items: ['radarNA', ...(OPERA_RELAY ? ['radarEU'] : []), 'radarDE'] },
-  { group: 'globe.fcst', items: ['hrrr', 'iconEu', 'gfs'] },
+  { group: 'globe.fcst', items: ['gdps', 'hrrr', 'iconEu'] },
 ];
-state.sources = { radarNA: true, radarEU: true, radarDE: true, hrrr: true, iconEu: true, gfs: true, ...store.get('sources', {}) };
+state.sources = { radarNA: true, radarEU: true, radarDE: true, gdps: true, hrrr: true, iconEu: true, ...store.get('sources', {}) };
+// Forecast rain: 48 hours, or 10 days with Settings > Extended radar forecast.
+state.fcstExtended = store.get('fcstExtended', false);
+const fcstSpan = () => forecastSpan(state.fcstExtended);
+// A layer with something to show (the regional forecast has nothing outside
+// the U.S. and Europe).
+const shown = k => isOn(k) && anim[k].status !== 'none';
 if (!OPERA_RELAY) state.sources.radarEU = false;
 const isOn = k => !!state.layers[SWITCH_OF[k] ?? k] && (!SOURCE_OF_LAYER[k] || !!state.sources[SOURCE_OF_LAYER[k]]);
 const ANIM_SOURCES = {
@@ -822,7 +830,8 @@ const ANIM_SOURCES = {
   radar: { fetch: fetchHiResRadar, everyMin: 6 },
   radar2: { fetch: fetchGermanRadar, everyMin: 5 },
   radar3: { fetch: fetchOperaRadar, everyMin: 10 },
-  fcst: { fetch: () => fetchForecastRain(state.viewing.lat, state.viewing.lon, state.sources), everyMin: 30 },
+  fcstg: { fetch: () => fetchGlobalForecast(fcstSpan()), everyMin: 60 },
+  fcst: { fetch: () => fetchRegionalForecast(state.viewing.lat, state.viewing.lon, state.sources, fcstSpan()), everyMin: 30 },
 };
 const animTimers = {};
 
@@ -830,8 +839,15 @@ async function refreshFrames(name) {
   const a = anim[name];
   if (!a.frames.length) { a.status = 'loading'; updateLayersUI(); }
   try {
-    const out = await ANIM_SOURCES[name].fetch(); // { frames, box, native? }
+    const out = await ANIM_SOURCES[name].fetch(); // { frames, box, native? }, or null: nothing here
     if (!isOn(name)) return;
+    if (!out) {
+      Object.assign(a, { frames: [], idx: -1, status: 'none' });
+      hiRes[name] = null;
+      updateLayersUI();
+      await globe?.setFrames(name, [], null);
+      return;
+    }
     a.frames = out.frames;
     a.box = out.box;
     a.native = out.native; // degrees per data pixel; absent for frames drawn in the page
@@ -903,11 +919,14 @@ function frameLabel(name) {
   if (a.status === 'error') return t('anim.unavailable');
   const f = a.frames[a.idx];
   if (!f) return t('anim.loading');
-  const time = new Intl.DateTimeFormat(locale(), { hour: 'numeric', minute: '2-digit', hour12: use12h() }).format(f.time);
-  // Negative = in the past ("6 minutes ago"), positive = forecast ("in 3 hours").
+  // Negative = in the past ("6 minutes ago"), positive = forecast ("in 3 hours",
+  // and for the extended forecast "Fri 11:00 PM · in 4 days").
   const mins = Math.round((f.time - Date.now()) / 60e3);
+  const far = Math.abs(mins) > 20 * 60;
+  const time = new Intl.DateTimeFormat(locale(), { ...(far ? { weekday: 'short' } : {}), hour: 'numeric', minute: '2-digit', hour12: use12h() }).format(f.time);
   const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
-  return `${time} · ${Math.abs(mins) < 90 ? rtf.format(mins, 'minute') : rtf.format(Math.round(mins / 60), 'hour')}`;
+  const ago = Math.abs(mins) < 90 ? rtf.format(mins, 'minute') : Math.abs(mins) < 48 * 60 ? rtf.format(Math.round(mins / 60), 'hour') : rtf.format(Math.round(mins / 1440), 'day');
+  return `${time} · ${ago}`;
 }
 
 function onLayerFrame(name, idx) {
@@ -927,7 +946,8 @@ function onLayerFrame(name, idx) {
 // loop switched on. Redrawn every frame while shown, so the dot moves
 // smoothly between radar steps.
 function timelineSpan() {
-  return globe?.clock() ?? (isOn('fcst') ? globe?.forecastClock() : null) ?? null;
+  // The forecast replaces the observations on the globe while it's on.
+  return (isOn('fcst') ? globe?.forecastClock() : null) ?? globe?.clock() ?? null;
 }
 const timelineText = { start: '', end: '', now: '', p: -1 };
 let timelineRaf = 0;
@@ -940,7 +960,9 @@ function renderTimeline() {
     measureSafe();
   }
   if (!show) return;
-  const fmt = new Intl.DateTimeFormat(locale(), { hour: 'numeric', minute: '2-digit', hour12: use12h() });
+  // Over more than a day (the forecast), the day goes with the time.
+  const long = span.end - span.start > 20 * 36e5;
+  const fmt = new Intl.DateTimeFormat(locale(), { ...(long ? { weekday: 'short' } : {}), hour: 'numeric', minute: '2-digit', hour12: use12h() });
   const set = (key, value, write) => { if (timelineText[key] !== value) { timelineText[key] = value; write(value); } };
   set('start', fmt.format(span.start), v => { $('#tl-start').textContent = v; });
   set('end', fmt.format(span.end), v => { $('#tl-end').textContent = v; });
@@ -952,7 +974,7 @@ function renderTimeline() {
 
 function layersHTML() {
   const sw = (key, label) => `<label class="switch"><input type="checkbox" data-layer="${key}" ${state.layers[key] ? 'checked' : ''}><span></span>${esc(label)}</label>`;
-  const rows = ANIM_KEYS.filter(isOn).map(k => {
+  const rows = ANIM_KEYS.filter(shown).map(k => {
     const a = anim[k];
     return `<div class="anim-row">
       <div class="anim-head"><b>${esc(t(`anim.${k}`))}</b><span id="anim-${k}-time">${esc(frameLabel(k))}</span></div>
@@ -962,11 +984,11 @@ function layersHTML() {
   }).join('');
   // Collapsed (the default), the timers fold into one line: how many are
   // playing and the time on screen, which keeps updating (onLayerFrame).
-  const on = ANIM_KEYS.filter(isOn), open = state.animOpen;
+  const on = ANIM_KEYS.filter(shown), open = state.animOpen;
   const key = summaryKey();
   const summary = `<div class="anim-summary"><b>${esc(t('anim.summary', { n: on.length }))}</b><span id="anim-summary-time">${esc(key ? frameLabel(key) : '')}</span></div>`;
   return `<div id="layers">
-    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('borders', t('globe.borders'))}${sw('labels', t('globe.labels'))}${sw('fcst', t('globe.fcst'))}</div>
+    <div class="toggles">${sw('night', t('globe.night'))}${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}${sw('borders', t('globe.borders'))}${sw('labels', t('globe.labels'))}${sw('fcst', t(state.fcstExtended ? 'globe.fcst10' : 'globe.fcst'))}</div>
     ${rows ? `<div class="anim${open ? '' : ' collapsed'}"><button type="button" class="anim-play" id="anim-play"></button>
       <div class="anim-rows">${open ? rows : summary}</div>
       <button type="button" class="anim-toggle" id="anim-toggle" aria-expanded="${open}" aria-label="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}" title="${esc(t(open ? 'anim.collapse' : 'anim.expand'))}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
@@ -974,9 +996,10 @@ function layersHTML() {
   </div>`;
 }
 
-// Whose time the collapsed line shows: the first radar that's on (they share
-// one clock), else satellite rain, else the forecast.
-const summaryKey = () => ['radar', 'radar3', 'radar2', 'sat', 'fcst'].find(isOn);
+// Whose time the collapsed line shows: the forecast when it's on (it replaces
+// the observations on the globe), else the first radar that's on (they share
+// one clock), else satellite rain.
+const summaryKey = () => ['fcstg', 'fcst', 'radar', 'radar3', 'radar2', 'sat'].find(shown);
 
 function bindLayers() {
   document.querySelectorAll('#layers [data-layer]').forEach(inp => inp.addEventListener('change', () => {
@@ -1929,6 +1952,24 @@ function start() {
   go(initial, { sound: false });
 }
 $('#start').addEventListener('click', start);
+
+// ---------- extended radar forecast ----------
+// Forecast rain for 10 days (every 3 hours) instead of 48 hours (hourly).
+{
+  const sw = $('#fcst-ext-switch');
+  sw.checked = state.fcstExtended;
+  sw.addEventListener('change', () => {
+    blip('select');
+    state.fcstExtended = sw.checked;
+    store.set('fcstExtended', sw.checked);
+    for (const k of ['fcstg', 'fcst']) {
+      if (!isOn(k)) continue;
+      anim[k] = { frames: [], idx: -1, status: 'loading' };
+      refreshFrames(k);
+    }
+    updateLayersUI();
+  });
+}
 
 // ---------- keep screen on ----------
 // A Settings switch (wakelock.js), so the globe can stay up for hours

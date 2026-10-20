@@ -55,11 +55,11 @@ void main() {
 }`;
 
 const FRAG = `
-uniform sampler2D dayTex, nightTex, satA, satB, radA, radB, rad2A, rad2B, rad3A, rad3B, fcstA, fcstB, detailDay, detailNight;
-uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uRad2, rad2Mix, uRad3, rad3Mix, uFcst, fcstMix, uDetail, uGrain;
+uniform sampler2D dayTex, nightTex, satA, satB, radA, radB, rad2A, rad2B, rad3A, rad3B, fcstA, fcstB, fcstgA, fcstgB, detailDay, detailNight;
+uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uRad2, rad2Mix, uRad3, rad3Mix, uFcst, fcstMix, fcstShow, uFcstG, fcstgMix, uDetail, uGrain;
 // Image patches as (west, south, width, height) in degrees. West may be any
 // longitude, so a patch can straddle the date line.
-uniform vec4 satBox, radBox, rad2Box, rad3Box, fcstBox, detailBox;
+uniform vec4 satBox, radBox, rad2Box, rad3Box, fcstBox, fcstgBox, detailBox;
 varying vec2 vUv; varying vec3 vN; varying vec3 vW;
 vec2 boxUv(vec2 ll, vec4 box) {
   return vec2(mod(ll.x - box.x + 360.0, 360.0) / box.z, (ll.y - box.y) / box.w);
@@ -130,7 +130,9 @@ void main() {
   // Warm glow along the terminator.
   col += uNight * vec3(0.22, 0.09, 0.03) * exp(-pow((d - 0.02) * 9.0, 2.0)) * 0.5;
   // Precipitation, back to front: satellite rain (global), live radar (its
-  // own box), then the 12-hour forecast (a box around the viewed place).
+  // own box), then the forecast: the global model, with a sharper regional
+  // one (U.S. or Europe) over it in its own box. The forecast is a different
+  // time from the observations, so where it's on it replaces them.
   // Each radar replaces the layers beneath it where its radars can see.
   // Radar areas on the same switch: North America, Germany, Europe (OPERA).
   vec2 ruv = boxUv(ll, radBox);
@@ -140,7 +142,10 @@ void main() {
   vec2 r3uv = boxUv(ll, rad3Box);
   float r3In = inside(r3uv) * uRad3;
   vec2 fuv = boxUv(ll, fcstBox);
-  float fIn = inside(fuv) * uFcst;
+  float fIn = inside(fuv) * uFcst * fcstShow;
+  vec2 guv = boxUv(ll, fcstgBox);
+  float gIn = inside(guv) * uFcstG;
+  float anyF = max(fIn, gIn);
   // Edge roughness in degrees-space (~3 km and ~1 km features), faded in with zoom.
   float grain = uGrain > 0.0 ? (vnoise(ll * 36.0) * 0.65 + vnoise(ll * 110.0) * 0.35 - 0.5) * 0.3 * uGrain : 0.0;
   // Where each radar actually sees (0 outside its range, even inside its box).
@@ -151,20 +156,24 @@ void main() {
   float sIn = inside(suv) * uSat;
   if (sIn > 0.0) {
     vec4 o = overlay(satA, satB, suv, satMix, grain);
-    col = mix(col, o.rgb, o.a * sIn * (1.0 - rCov) * (1.0 - r2Cov) * (1.0 - r3Cov) * (1.0 - fIn) * 0.85);
+    col = mix(col, o.rgb, o.a * sIn * (1.0 - rCov) * (1.0 - r2Cov) * (1.0 - r3Cov) * (1.0 - anyF) * 0.85);
   }
   if (rIn > 0.0) {
     vec4 o = overlay(radA, radB, ruv, radMix, grain);
-    col = mix(col, o.rgb, o.a * rIn * (1.0 - fIn) * 0.9);
+    col = mix(col, o.rgb, o.a * rIn * (1.0 - anyF) * 0.9);
   }
   // Europe-wide OPERA under Germany's own radar (which wins where it's on).
   if (r3In > 0.0) {
     vec4 o = overlay(rad3A, rad3B, r3uv, rad3Mix, grain);
-    col = mix(col, o.rgb, o.a * r3In * (1.0 - r2Cov) * (1.0 - fIn) * 0.9);
+    col = mix(col, o.rgb, o.a * r3In * (1.0 - r2Cov) * (1.0 - anyF) * 0.9);
   }
   if (r2In > 0.0) {
     vec4 o = overlay(rad2A, rad2B, r2uv, rad2Mix, grain);
-    col = mix(col, o.rgb, o.a * r2In * (1.0 - fIn) * 0.9);
+    col = mix(col, o.rgb, o.a * r2In * (1.0 - anyF) * 0.9);
+  }
+  if (gIn > 0.0) {
+    vec4 o = overlay(fcstgA, fcstgB, guv, fcstgMix, grain);
+    col = mix(col, o.rgb, o.a * gIn * (1.0 - fIn) * 0.9);
   }
   if (fIn > 0.0) {
     vec4 o = overlay(fcstA, fcstB, fuv, fcstMix, grain);
@@ -233,7 +242,9 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     uRad3: { value: 0 }, rad3Mix: { value: 0 }, rad3A: { value: null }, rad3B: { value: null },
     rad3Box: { value: new THREE.Vector4(0, 0, 1, 1) },
     uFcst: { value: 0 }, fcstMix: { value: 0 }, fcstA: { value: null }, fcstB: { value: null },
-    fcstBox: { value: new THREE.Vector4(0, 0, 1, 1) },
+    fcstBox: { value: new THREE.Vector4(0, 0, 1, 1) }, fcstShow: { value: 1 },
+    uFcstG: { value: 0 }, fcstgMix: { value: 0 }, fcstgA: { value: null }, fcstgB: { value: null },
+    fcstgBox: { value: new THREE.Vector4(-180, -90, 360, 180) },
     uDetail: { value: 0 }, detailDay: { value: null }, detailNight: { value: null },
     uGrain: { value: 0 },
     detailBox: { value: new THREE.Vector4(0, 0, 1, 1) },
@@ -281,24 +292,30 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     radar2: new FrameLayer({ onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('radar2', i, n, time) }),
     radar3: new FrameLayer({ onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('radar3', i, n, time) }),
     fcst: new FrameLayer({ forward: true, onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('fcst', i, n, time) }),
+    fcstg: new FrameLayer({ forward: true, onChange: invalidate, upload, onFrame: (i, n, time) => onLayerFrame?.('fcstg', i, n, time) }),
   };
-  // Observations share one clock (see FrameSync); the forecast keeps its own.
-  const sync = new FrameSync({ sat: anims.sat, radar: anims.radar, radar2: anims.radar2, radar3: anims.radar3 },
-    name => !!uniforms[ANIM_UNIFORMS[name][0]].value);
+  // Observations share one clock (see FrameSync); the forecasts share
+  // another, led by the global model's times.
+  const layerOn = name => !!uniforms[ANIM_UNIFORMS[name][0]].value;
+  const sync = new FrameSync({ sat: anims.sat, radar: anims.radar, radar2: anims.radar2, radar3: anims.radar3 }, layerOn);
+  const fsync = new FrameSync({ fcstg: anims.fcstg, fcst: anims.fcst }, layerOn, { lead: 'fcstg', forward: true });
   const ANIM_UNIFORMS = {
     sat: ['uSat', 'satA', 'satB', 'satMix'],
     radar: ['uRad', 'radA', 'radB', 'radMix'],
     radar2: ['uRad2', 'rad2A', 'rad2B', 'rad2Mix'],
     radar3: ['uRad3', 'rad3A', 'rad3B', 'rad3Mix'],
     fcst: ['uFcst', 'fcstA', 'fcstB', 'fcstMix'],
+    fcstg: ['uFcstG', 'fcstgA', 'fcstgB', 'fcstgMix'],
   };
   function bindAnims() {
     for (const [k, layer] of Object.entries(anims)) {
       const [, a, b, m] = ANIM_UNIFORMS[k];
       uniforms[a].value = layer.texA; uniforms[b].value = layer.texB; uniforms[m].value = layer.mix;
-      const box = layer.box, u = uniforms[{ sat: 'satBox', radar: 'radBox', radar2: 'rad2Box', radar3: 'rad3Box', fcst: 'fcstBox' }[k]];
+      const box = layer.box, u = uniforms[{ sat: 'satBox', radar: 'radBox', radar2: 'rad2Box', radar3: 'rad3Box', fcst: 'fcstBox', fcstg: 'fcstgBox' }[k]];
       if (box) u.value.set(box.w, box.s, box.e - box.w, box.n - box.s);
     }
+    // The regional forecast steps aside where it has nothing for the time shown.
+    uniforms.fcstShow.value = anims.fcst.frames.length && !anims.fcst.hidden ? 1 : 0;
   }
   bindAnims();
 
@@ -906,6 +923,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       if (uniforms[ANIM_UNIFORMS[k][0]].value && layer.tick(dt)) dirty = true;
     }
     if (sync.tick(dt)) dirty = true;
+    if (fsync.tick(dt)) dirty = true;
     uploadOne();
     bindAnims();
     if (anim) {
@@ -1004,7 +1022,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       if (name === 'borders') showBorders(on);
       if (name === 'labels') { cityLabels = skyNames = on; skyNameOpacity = -1; refreshLabels(); }
       if (name in ANIM_UNIFORMS) uniforms[ANIM_UNIFORMS[name][0]].value = on ? 1 : 0;
-      if (name in ANIM_UNIFORMS && name !== 'fcst') sync.refresh();
+      if (name in ANIM_UNIFORMS) (name.startsWith('fcst') ? fsync : sync).refresh();
     },
     // frames: [{ time: Date, url } | { time: Date, image }], oldest first.
     // box: { w, s, e, n } for layers that cover only part of the globe.
@@ -1013,22 +1031,20 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       // The box is applied when the first new frame is on screen (see bindAnims).
       return anims[name].setFrames(frames, { keepIndex, box });
     },
-    setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; sync.playing = on; },
+    setPlaying(on) { for (const layer of Object.values(anims)) layer.playing = on; sync.playing = on; fsync.playing = on; },
     seek(name, i) {
       const layer = anims[name];
       if (!layer.sync || !layer.frames[i]) return layer.seek(i);
-      sync.seekTime(+layer.frames[i].time);
+      layer.sync.seekTime(+layer.frames[i].time);
     },
     sunInfo: () => astro(),
     suspend(on) { suspended = on; if (!on) invalidate(); },
     // The shared observation clock: its window and the time on screen (ms).
     clock: () => (sync.step >= 0 && sync.steps.length > 1
       ? { start: sync.steps[0], end: sync.steps.at(-1), now: sync.position() } : null),
-    // The same for the forecast's own loop.
-    forecastClock() {
-      const f = anims.fcst.frames;
-      return f.length > 1 && anims.fcst.idx >= 0 ? { start: +f[0].time, end: +f.at(-1).time, now: anims.fcst.position() } : null;
-    },
+    // The same for the forecasts' clock.
+    forecastClock: () => (fsync.step >= 0 && fsync.steps.length > 1
+      ? { start: fsync.steps[0], end: fsync.steps.at(-1), now: fsync.position() } : null),
     // Controller input (gamepad.js): spin by screen pixels like a drag, zoom
     // by a factor, and "tap" a screen point.
     pan(dx, dy) {

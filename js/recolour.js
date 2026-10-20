@@ -125,3 +125,18 @@ export const recolourDwdRain = recolourer([
   ['A00000', [250, 220, 255, 1]],      // 130-160
   ['606060', [255, 240, 255, 1]],      // 160+
 ]);
+
+// Environment Canada GDPS precipitation rate (mm/h, its PRECIPPRTMMH style).
+// The two faintest classes (under 0.1 mm/h) are left out: drawn, they cover
+// half the world in a thin haze.
+export const recolourGdpsRain = recolourer([
+  ['00007F', null],                    // 0.01-0.05
+  ['0000E7', null],                    // 0.05-0.1
+  ['007EFD', [120, 200, 255, 0.6]],    // 0.1-0.5
+  ['19FCE4', [80, 170, 255, 0.78]],    // 0.5-1
+  ['98FD65', [40, 200, 90, 0.85]],     // 1-5
+  ['FDE400', [250, 220, 40, 0.88]],    // 5-10
+  ['FD6500', [250, 150, 20, 0.9]],     // 10-20
+  ['E70000', [230, 30, 40, 0.95]],     // 20-50
+  ['7F0000', [200, 40, 200, 1]],       // 50+
+]);

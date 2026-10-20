@@ -111,7 +111,7 @@ export class FrameLayer {
       if (!keep.has(url)) { p.then(u => u && URL.revokeObjectURL(u)); this.blobs.delete(url); }
     }
     this.frames = frames;
-    if (!frames.length) return;
+    if (!frames.length) { this.idx = -1; this.sync?.refresh(); this.onChange?.(); return; }
     // Show the newest observation (or, for a forecast, "now") straight away,
     // then fetch the rest in the background.
     const start = keepIndex && this.idx >= 0 ? Math.min(this.idx, frames.length - 1) : this.forward ? 0 : frames.length - 1;
@@ -278,9 +278,15 @@ export class FrameLayer {
 // (or when, like the satellite, its data is older than the window).
 export class FrameSync {
   // layers: { name: FrameLayer }; isOn(name): whether that layer is visible.
-  constructor(layers, isOn) {
+  // lead: a layer whose own frame times make the clock (the global forecast);
+  // the others then show their frame for each of those times and are marked
+  // hidden while the clock is outside their own range. forward: start at the
+  // first step ("now", for a forecast) rather than the newest.
+  constructor(layers, isOn, { lead = null, forward = false } = {}) {
     this.layers = Object.entries(layers);
     this.isOn = isOn;
+    this.lead = lead;
+    this.forward = forward;
     this.steps = [];  // clock times (ms), oldest first
     this.step = -1;   // index of the time on screen
     this.wait = 0;
@@ -301,12 +307,16 @@ export class FrameSync {
     const m = this.members();
     const was = this.steps[this.step];
     if (!m.length) { this.steps = []; this.step = -1; return; }
-    const end = Math.max(...m.map(l => +l.frames.at(-1).time));
-    const span = Math.min(...m.map(l => l.frames.at(-1).time - l.frames[0].time));
-    const step = Math.max(60e3, Math.min(...m.map(l => l.stepMs())));
-    const n = Math.max(1, Math.round(span / step));
-    this.steps = Array.from({ length: n + 1 }, (_, k) => end - (n - k) * step);
-    this.step = was == null ? n : this.indexAt(was);
+    const lead = this.layers.find(([name, l]) => name === this.lead && m.includes(l))?.[1];
+    if (lead) this.steps = lead.frames.map(f => +f.time);
+    else {
+      const end = Math.max(...m.map(l => +l.frames.at(-1).time));
+      const span = Math.min(...m.map(l => l.frames.at(-1).time - l.frames[0].time));
+      const step = Math.max(60e3, Math.min(...m.map(l => l.stepMs())));
+      const n = Math.max(1, Math.round(span / step));
+      this.steps = Array.from({ length: n + 1 }, (_, k) => end - (n - k) * step);
+    }
+    this.step = was == null ? (this.forward ? 0 : this.steps.length - 1) : this.indexAt(was);
     this.place(m);
   }
 
@@ -316,8 +326,18 @@ export class FrameSync {
     return i;
   }
 
+  // With a lead layer, the others are hidden outside their own time range
+  // (a regional forecast that ends sooner than the global one).
+  mark(t) {
+    if (!this.lead) return;
+    for (const [, l] of this.layers) {
+      l.hidden = !l.frames.length || t < +l.frames[0].time - l.stepMs() || t > +l.frames.at(-1).time + l.stepMs();
+    }
+  }
+
   place(m = this.members()) {
     const t = this.steps[this.step];
+    this.mark(t);
     for (const l of m) l.mix = 0;
     for (const l of m) if (l.frameAt(t) !== l.idx) l.seek(l.frameAt(t));
     this.mix = 0;
@@ -365,6 +385,7 @@ export class FrameSync {
       for (const l of go) l.advance();
       for (const l of moving) if (!ready(l)) l.mix = 0;
       this.step = next;
+      this.mark(t);
       this.mix = 0;
       this.stall = 0;
       this.elapsed = 0;

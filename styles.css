@@ -532,6 +532,16 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
   .intro-logo { backdrop-filter: none; background: linear-gradient(180deg, rgba(40, 70, 120, 0.55), rgba(20, 40, 80, 0.45)); }
 }
 
+/* ---------- graphics quality: Low ---------- */
+/* TVs and weak devices (quality.js): no blur behind the glass panels (the
+   costliest effect while the globe redraws), slightly more opaque panels
+   instead, and the weather icons hold still. */
+body.low-gfx .glass, body.low-gfx .intro-logo, body.low-gfx .sheet::backdrop, body.low-gfx * {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+body.low-gfx .glass { background: rgba(248, 251, 255, 0.95); }
+body.low-gfx .wx-anim * { animation: none !important; }
+
 /* ---------- language menu ---------- */
 .lang-wrap { position: relative; }
 .lang {

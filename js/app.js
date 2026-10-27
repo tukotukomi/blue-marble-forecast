@@ -8,6 +8,7 @@ import { createCalmSky } from './calm.js';
 import { moonPhase } from './sky.js';
 import { isApp, geoAvailable, geoPermission, getPosition } from './native.js';
 import { wakeSupported, keepAwake } from './wakelock.js';
+import { qualitySetting, lowPower } from './quality.js';
 import { isSpanScreen, hasManyScreens, initSpan, startSpan, stopSpan, spanning, shareLayer, noteInput } from './span.js';
 import { VERSION, BUILD } from './version.js';
 import { initFeedback } from './feedback.js';
@@ -171,6 +172,13 @@ const globe = createGlobe(globeHost, {
   onLabelClick: openCity,
   onNeedWeather,
   onViewSettled,
+  // Graphics quality Auto chose High but this device still can't keep up:
+  // suggest Low, once.
+  onSlow() {
+    if (qualitySetting !== 'auto' || store.get('slowHinted', false)) return;
+    store.set('slowHinted', true);
+    toast(t('quality.slowHint'));
+  },
   // On phones the first tap on the Earth folds the forecast window down to
   // its title, uncovering the globe; later taps pick places as usual.
   onTap() {
@@ -1063,7 +1071,7 @@ function onViewSettled(view) {
 const wrapLon = x => ((((x % 360) + 540) % 360) - 180);
 function updateHiRes(name) {
   const a = anim[name];
-  if (!globe || !isOn(name) || a.status !== 'ready' || !a.native || !(a.frames[0]?.urlFor || a.frames[0]?.makeFor)) return;
+  if (!globe || lowPower || !isOn(name) || a.status !== 'ready' || !a.native || !(a.frames[0]?.urlFor || a.frames[0]?.makeFor)) return;
   const full = a.box, view = settledView;
   const revert = () => {
     if (!hiRes[name]) return;
@@ -1914,6 +1922,7 @@ function applyLanguage() {
     document.head.appendChild(link);
   }
   applyStatic();
+  qualityNote();
   renderDock();
   renderTop();
   render(false);
@@ -1961,6 +1970,22 @@ function start() {
   go(initial, { sound: false });
 }
 $('#start').addEventListener('click', start);
+
+// ---------- graphics quality ----------
+// Auto, High or Low (quality.js). It applies at start-up, so a change restarts the app.
+document.body.classList.toggle('low-gfx', lowPower);
+{
+  const seg = document.querySelectorAll('[data-quality]');
+  const mark = () => seg.forEach(b => b.setAttribute('aria-checked', String(b.dataset.quality === qualitySetting)));
+  mark();
+  seg.forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.quality === qualitySetting) return;
+    blip('select');
+    store.set('quality', b.dataset.quality);
+    location.reload();
+  }));
+}
+const qualityNote = () => { $('#quality-now').textContent = qualitySetting === 'auto' ? t(lowPower ? 'quality.autoLow' : 'quality.autoHigh') : ''; };
 
 // ---------- extended radar forecast ----------
 // Forecast rain for 10 days (every 3 hours) instead of 48 hours (hourly).

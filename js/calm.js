@@ -6,6 +6,7 @@
 // Plain 2D canvas. Particle counts scale with the screen and are capped, the
 // pixel ratio is limited, it only runs while Calm View is open, and with
 // "reduce motion" it draws a single still frame.
+import { lowPower } from './quality.js';
 
 const SKIES = {
   // Top, middle, bottom. Kept mid-toned so white text stays readable.
@@ -63,7 +64,8 @@ function cloudSprite(tone) {
 
 export function createCalmSky(canvas) {
   const ctx = canvas.getContext('2d');
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Reduced motion, or Graphics quality Low: a single still frame.
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches || lowPower;
   const sprites = { light: [0, 1, 2].map(() => cloudSprite('rgba(255,255,255,0.55)')), dark: [0, 1, 2].map(() => cloudSprite('rgba(150,162,180,0.5)')) };
   let W = 0, H = 0, dpr = 1, sky = null, scene = sceneFor(0, true), wind = 8;
   // With a horizon (a fraction of the height; Calm View's planet look) there

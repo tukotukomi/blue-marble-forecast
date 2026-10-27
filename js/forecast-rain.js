@@ -1,4 +1,5 @@
 import { recolourDwdRain, recolourGdpsRain } from './recolour.js';
+import { px } from './quality.js';
 
 // The forecast rain animation: 48 hours ahead (10 days with Settings >
 // Extended radar forecast), from three models:
@@ -53,7 +54,7 @@ export async function fetchGlobalForecast({ hours, stepH }) {
   const frames = picked.map(t => ({
     time: new Date(t),
     url: `${GEOMET}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=${GDPS_LAYER}&STYLES=PRECIPPRTMMH&CRS=EPSG:4326`
-      + `&BBOX=-90,-180,90,180&WIDTH=1600&HEIGHT=800&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${new Date(t).toISOString().replace('.000', '')}`
+      + `&BBOX=-90,-180,90,180&WIDTH=${px(1600)}&HEIGHT=${px(800)}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${new Date(t).toISOString().replace('.000', '')}`
       + (run ? `&DIM_REFERENCE_TIME=${run}` : ''),
     transform: recolourGdpsRain,
   }));
@@ -82,7 +83,7 @@ async function fetchHrrr({ hours, stepH }) {
     // Layer names are reused by every run, so the run time keeps caches apart.
     const urlFor = ({ w, s, e, n }, W, H) => `${IEM}/cgi-bin/wms/hrrr/refd.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=refd_${String(m).padStart(4, '0')}`
       + `&STYLES=&SRS=EPSG:4326&BBOX=${w},${s},${e},${n}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&run=${init}`;
-    frames.push({ time: new Date(init + m * 60e3), urlFor, url: urlFor(HRRR_BOX, 2048, 888) });
+    frames.push({ time: new Date(init + m * 60e3), urlFor, url: urlFor(HRRR_BOX, px(2048), px(888)) });
   }
   if (frames.length < 2) throw new Error('HRRR run too old');
   return { frames, box: HRRR_BOX, source: 'hrrr', native: 0.027 }; // HRRR: 3 km
@@ -101,7 +102,7 @@ async function fetchIconEu({ hours, stepH }) {
     const time = new Date(first + k * step);
     const urlFor = ({ w, s, e, n }, W, H) => `${DWD}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=Icon-eu_reg00625_fd_sl_TOTPREC01H`
       + `&STYLES=&CRS=EPSG:4326&BBOX=${s},${w},${n},${e}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE&TIME=${time.toISOString()}`;
-    return { time, urlFor, url: urlFor(ICON_EU_BOX, 2048, 976), transform: recolourDwdRain };
+    return { time, urlFor, url: urlFor(ICON_EU_BOX, px(2048), px(976)), transform: recolourDwdRain };
   });
   // Make sure the model run actually has these hours before committing to it.
   const probe = await fetch(frames[0].url);

@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { FrameLayer, FrameSync } from './frames.js';
 import { RADAR_BOX } from './data.js';
 import { CONSTELLATIONS, PLANETS, planetPositions, moonPosition } from './sky.js';
+import { lowPower } from './quality.js';
 
 // The base imagery ships with the site (tools/fetch-earth.mjs). NASA GIBS
 // renders whole-Earth images on request, which took 4-5 seconds at this size;
@@ -75,6 +76,9 @@ vec4 cubicW(float v) {
   return vec4(x, y, z, 6.0 - x - y - z) / 6.0;
 }
 vec4 smoothTex(sampler2D tex, vec2 uv) {
+#ifdef LOW_QUALITY
+  return texture2D(tex, uv); // Graphics quality Low: one plain read
+#endif
   vec2 size = vec2(textureSize(tex, 0));
   vec2 p = uv * size - 0.5;
   vec2 fr = fract(p);
@@ -208,14 +212,14 @@ function blankTex(rgba) {
   return t;
 }
 
-export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFrame, onLabelClick, onNeedWeather, onViewSettled, renderLabel, skyName = key => key, safeArea = () => ({ top: 0, bottom: 0 }) }) {
+export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFrame, onLabelClick, onNeedWeather, onViewSettled, onSlow, renderLabel, skyName = key => key, safeArea = () => ({ top: 0, bottom: 0 }) }) {
   // Set whenever the scene needs a redraw; see the main loop below.
   let dirty = true;
   const invalidate = () => { dirty = true; };
 
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer = new THREE.WebGLRenderer({ antialias: !lowPower, alpha: true });
   } catch {
     host.classList.add('no-webgl');
     return null;
@@ -264,7 +268,8 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   const smallDay = load(IMAGERY.day[0], 'dayTex');
   const smallNight = load(IMAGERY.night[0], 'nightTex');
   const ready = smallDay;
-  Promise.all([smallDay, smallNight]).then(() => {
+  // (Graphics quality Low keeps the small ones.)
+  if (!lowPower) Promise.all([smallDay, smallNight]).then(() => {
     load(IMAGERY.day[1], 'dayTex');
     load(IMAGERY.night[1], 'nightTex');
   });
@@ -321,7 +326,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
 
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(1, 160, 80),
-    new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG })
+    new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, defines: lowPower ? { LOW_QUALITY: 1 } : {} })
   );
   scene.add(earth);
 
@@ -876,6 +881,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       u.value = target > u.value ? Math.min(target, u.value + dt / 400) : Math.max(target, u.value - dt / 400);
       dirty = true;
     }
+    if (lowPower) return; // Graphics quality Low: no extra-sharp imagery
     if (cam.dist >= DETAIL_DIST || anim || pointers.size || detail.loading) return;
     if (now - detail.movedAt < 350 || now - detail.failedAt < 5000) return;
     const view = viewBox();
@@ -889,8 +895,12 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   let lastKey = '';
 
   // Drop the render resolution on slow GPUs: if frames keep taking longer
-  // than ~22 ms, step the pixel ratio down (never below 1).
-  let pixelRatio = Math.min(devicePixelRatio, 2);
+  // than ~22 ms, step the pixel ratio down (never below 1). Graphics quality
+  // Low starts at 0.75 (upscaled; fine at TV viewing distance) and may go
+  // down to 0.5. Still too slow at the floor: onSlow, once.
+  let pixelRatio = lowPower ? Math.min(devicePixelRatio, 0.75) : Math.min(devicePixelRatio, 2);
+  const MIN_RATIO = lowPower ? 0.5 : 1, SLOW_MS = lowPower ? 45 : 22;
+  let slowReported = false;
   let slowFrames = 0;
   renderer.setPixelRatio(pixelRatio);
 
@@ -914,6 +924,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
   function frame(now) {
     requestAnimationFrame(frame);
     if (suspended) { lastNow = now; return; }
+    if (lowPower && now - lastNow < 30) return; // Graphics quality Low: at most ~30 frames a second
     // Motion is time-based so speed is the same at 60, 120 or a choppy 40 fps.
     const dt = Math.min(now - lastNow, 100);
     const f = dt / (1000 / 60);
@@ -967,7 +978,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     if (names !== skyNameOpacity) { skyNameOpacity = names; for (const { mat } of nameMats.values()) mat.opacity = names; }
     // Rain-edge roughness only up close, where it's finer than the data; far
     // out it would be smaller than a pixel and just shimmer.
-    uniforms.uGrain.value = THREE.MathUtils.clamp((1.6 - cam.dist) / 0.4, 0, 1);
+    uniforms.uGrain.value = lowPower ? 0 : THREE.MathUtils.clamp((1.6 - cam.dist) / 0.4, 0, 1);
     borders.lines?.update(w, h, cam.dist);
     renderer.render(scene, camera);
     layoutLabels(w, h);
@@ -981,13 +992,14 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     const gap = now - prevRender;
     prevRender = now;
     if (gap > 100) return; // first frame after an idle spell
-    slowFrames = gap > 22 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
-    if (slowFrames > 45 && pixelRatio > 1) {
-      pixelRatio = Math.max(1, pixelRatio - 0.25);
+    slowFrames = gap > SLOW_MS ? slowFrames + 1 : Math.max(0, slowFrames - 1);
+    if (slowFrames <= 45) return;
+    if (pixelRatio > MIN_RATIO) {
+      pixelRatio = Math.max(MIN_RATIO, pixelRatio - 0.25);
       renderer.setPixelRatio(pixelRatio);
       resize();
       slowFrames = 0;
-    }
+    } else if (!slowReported) { slowReported = true; onSlow?.(); }
   }
   requestAnimationFrame(frame);
 

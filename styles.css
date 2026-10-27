@@ -739,6 +739,17 @@ body.has-pad.started[data-view="globe"] .reticle, body.has-pad.started[data-view
 /* Controls list in Settings, shown once a controller has connected. */
 .pad-help { display: none; }
 body.has-pad .pad-help { display: block; }
+
+/* ---------- TV remote (remote.js) ---------- */
+/* A thick, bright ring you can see from the sofa, the centre marker while
+   steering the globe in Explore, and the remote's keys in Settings. */
+body.remote.using-pad :focus { outline: 4px solid #ffd84a; outline-offset: 3px; box-shadow: 0 0 0 9px rgba(255, 216, 74, 0.28); }
+body.remote.started.explore .reticle { display: block; }
+/* Switches hide their real checkbox, so the ring goes on the visible switch. */
+body.using-pad .switch input:focus + span { outline: 3px solid var(--wii); outline-offset: 3px; }
+body.remote.using-pad .switch input:focus + span { outline: 4px solid #ffd84a; box-shadow: 0 0 0 9px rgba(255, 216, 74, 0.28); }
+.remote-help { display: none; }
+body.remote .remote-help { display: block; }
 .pad-keys { list-style: none; padding: 0; margin: 8px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 16px; font-size: 13px; }
 .pad-keys li { display: flex; align-items: baseline; gap: 8px; }
 .pad-keys kbd { flex: none; font: inherit; font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 8px; background: #edf1f6; color: var(--wii-deep); }

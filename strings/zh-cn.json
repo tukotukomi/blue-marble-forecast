@@ -28,6 +28,8 @@
   "pad.title": "手柄",
   "pad.connected": "手柄已连接",
   "pad.disconnected": "手柄已断开",
+  "remote.title": "电视遥控器",
+  "remote.help": "<li><kbd>方向键</kbd><span>在按钮之间移动</span></li><li><kbd>确定</kbd><span>选择</span></li><li><kbd>返回</kbd><span>关闭，或退出探索</span></li><li><kbd>探索</kbd><span>之后方向键旋转地球，确定打开中心位置</span></li><li><kbd>+ − / 频道</kbd><span>缩放</span></li><li><kbd>播放/暂停</kbd><span>暂停或播放降水动画</span></li><li><kbd>宁静视图</kbd><span>左右切换地点，上下滚动</span></li>",
   "pad.help": "<li><kbd>左摇杆</kbd><span>旋转地球</span></li><li><kbd>右摇杆 / LT RT</kbd><span>缩放</span></li><li><kbd>LB RB / 方向键 ← →</kbd><span>切换页面</span></li><li><kbd>方向键 ↑ ↓</kbd><span>在按钮间移动</span></li><li><kbd>A</kbd><span>选择，或打开屏幕中心的地点</span></li><li><kbd>B</kbd><span>返回</span></li><li><kbd>X</kbd><span>隐藏控件（探索）</span></li><li><kbd>Y</kbd><span>地球</span></li><li><kbd>Start</kbd><span>设置</span></li><li><kbd>Select / View</kbd><span>播放或暂停降水动画</span></li><li class=\"pad-note\">PlayStation：✕ ○ □ △ 对应 A B X Y。</li>",
   "install.title": "安装应用",
   "install.button": "安装",

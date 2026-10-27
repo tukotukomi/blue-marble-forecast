@@ -3,6 +3,7 @@ import { iconFor, iconSVG, describe, severity, setTranslator } from './icons.js'
 import { fetchForecast, fetchCities, fetchNWS, searchPlaces, isNWS, hoursFor, dayRow, localNow, fetchSatFrames, fetchHiResRadar, fetchGermanRadar, fetchPlaces } from './data.js';
 import { fetchGlobalForecast, fetchRegionalForecast, forecastSpan } from './forecast-rain.js';
 import { initGamepad } from './gamepad.js';
+import { initRemote } from './remote.js';
 import { fetchOperaRadar, OPERA_RELAY } from './opera.js';
 import { createCalmSky } from './calm.js';
 import { moonPhase } from './sky.js';
@@ -2049,8 +2050,8 @@ if (globe) {
   });
 }
 
-// ---------- game controller ----------
-initGamepad({
+// ---------- game controller and TV remote ----------
+const controls = {
   started: () => state.started,
   start,
   pan: (dx, dy) => { closePick(); exploreWake(); noteInput(); globe?.pan(dx, dy); },
@@ -2065,15 +2066,17 @@ initGamepad({
     const y = free || innerWidth > 860 ? innerHeight / 2 : innerHeight * 0.28;
     globe?.pickAt(x, y);
   },
+  // Close the topmost thing open. Returns false when there was nothing to close.
   back() {
-    if (calm.open) return closeCalm();
+    if (calm.open) { closeCalm(); return true; }
     const dlg = document.querySelector('dialog[open]');
     if (!langMenu.hidden) closeLangMenu(true);
     else if (dlg) dlg.close();
     else if (pickCard) closePick();
     else if (weekDay != null) openWeekDay(null);
     else if (document.body.classList.contains('explore')) setExplore(false);
-    else document.activeElement?.blur?.();
+    else { document.activeElement?.blur?.(); return false; }
+    return true;
   },
   explore() {
     if (!['globe', 'region'].includes(state.view)) go('globe');
@@ -2098,6 +2101,12 @@ initGamepad({
     document.body.classList.toggle('has-pad', on);
     toast(t(on ? 'pad.connected' : 'pad.disconnected'));
   },
+};
+initGamepad(controls);
+initRemote({
+  ...controls,
+  exploring: () => document.body.classList.contains('explore') && !calm.open,
+  calmBody: () => (calm.open ? $('#calm-body') : null),
 });
 
 keepHomeSaved();

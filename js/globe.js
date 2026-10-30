@@ -1047,7 +1047,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       offsetTarget = m === 'park' ? (wide ? { x: host.clientWidth * 0.2, y: 0 } : { x: 0, y: host.clientHeight * 0.22 }) : { x: 0, y: 0 };
       const fit = portraitFit();
       const close = m === 'park' && widthKm;
-      const dist = close ? distForWidth(widthKm) : { intro: Math.max(3.4, fit), park: wide ? 2.05 : 2.6, region: 1.32, globe: Math.max(2.9, fit) }[m];
+      const dist = close ? distForWidth(widthKm) : { intro: Math.max(3.4, fit), park: wide ? 2.05 : 2.6, globe: Math.max(2.9, fit) }[m];
       if (lat != null) flyTo(m === 'park' && !close ? lat - 4 : lat, lon, dist, ms);
       else if (m === 'globe') flyTo(cam.lat, cam.lon, dist, ms ?? 1200);
       lastInteract = performance.now();

@@ -72,7 +72,7 @@ const state = {
   music: store.get('music', true),
   layers: { night: true, sat: false, radar: false, borders: true, labels: true, fcst: true, ...savedLayers() },
   places: [], // Natural Earth cities, loaded after start (see loadPlaces)
-  regionDay: 0,
+  labelsDetailed: store.get('labelsDetailed', false), // City labels: On / Detailed / Off
   view: 'now',
   fc: null, nws: null, cities: [],
   saved: store.get('saved', []), // My Places, in the order they were starred
@@ -88,15 +88,12 @@ state.viewing = state.current ? { ...state.current } : state.home;
 try { localStorage.removeItem('fc.viewing'); } catch { /* storage unavailable */ }
 
 // Dock order; the app still opens on 'now' (see start()).
-const VIEWS = ['places', 'globe', 'now', 'week', 'region', 'uv', 'laundry', 'fire'];
+const VIEWS = ['places', 'globe', 'now', 'week', 'fire'];
 
 const ico = d => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const DOCK_ICONS = {
   now: ico('<path d="M10 14.5V4a2 2 0 1 1 4 0v10.5a4 4 0 1 1-4 0Z"/><path d="M12 9v7"/>'),
   week: ico('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
-  region: ico('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/>'),
-  uv: ico('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/><path d="M12 9a3 3 0 0 0 0 6" fill="currentColor"/>'),
-  laundry: ico('<path d="M8 3 3 6l2 4 2-1v12h10V9l2 1 2-4-5-3a3 3 0 0 1-8 0Z"/>'),
   fire: ico('<path d="M12 2.5c.6 3-1 4.6-2.6 6.3C7.9 10.4 6 12.3 6 15.2a6 6 0 0 0 12 0c0-2.5-1.3-4.5-2.5-5.8-.3 1.4-1 2.2-2 2.6.6-3.2-.1-6.8-1.5-9.5Z"/>'),
   places: ico('<path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.83 1.03-6L3.3 9.6l6-.9Z"/>'),
   globe: ico('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
@@ -225,11 +222,11 @@ function renderLabel(item, mode) {
   }
   const wx = item.wx, name = esc(cityName(item));
   if (!wx) return `<span class="g-name">${name}</span>`;
-  if (mode === 'region') {
-    const i = state.regionDay;
-    return `${iconFor(wx.daily.weather_code[i], true, { size: 38 })}
+  // City labels on Detailed: today's high and low instead of the temperature now.
+  if (state.labelsDetailed) {
+    return `${iconFor(wx.daily.weather_code[0], true, { size: 38 })}
       <span class="g-name">${name}</span>
-      <span class="g-hilo"><b class="hi">${T(wx.daily.temperature_2m_max[i])}</b><b class="lo">${T(wx.daily.temperature_2m_min[i])}</b></span>`;
+      <span class="g-hilo"><b class="hi">${T(wx.daily.temperature_2m_max[0])}</b><b class="lo">${T(wx.daily.temperature_2m_min[0])}</b></span>`;
   }
   return `${iconFor(wx.current.weather_code, !!wx.current.is_day, { size: 30 })}
     <span class="g-name">${name}</span><b class="g-temp">${T(wx.current.temperature_2m)}</b>`;
@@ -523,7 +520,7 @@ const parkView = () => (closeNow() ? { widthKm: 500 } : {});
 function go(id, { sound = true } = {}) {
   if (sound) blip('select');
   closePick();
-  if (id !== 'globe' && id !== 'region') setExplore(false);
+  if (id !== 'globe') setExplore(false);
   setCollapsed(false);
   state.view = id;
   weekDay = null; // 10-Day always opens on its list
@@ -535,7 +532,6 @@ function go(id, { sound = true } = {}) {
   const v = state.viewing;
   if (globe) {
     if (id === 'globe') globe.setMode('globe');
-    else if (id === 'region') globe.setMode('region', { lat: v.lat, lon: v.lon });
     else if (globe.mode !== 'park' || closeNow()) globe.setMode('park', { lat: v.lat, lon: v.lon, ...parkView() });
     else globe.refreshLabels();
   }
@@ -628,12 +624,41 @@ function dayScreen(i) {
         <div class="pop big">${dropGlyph()}${esc(t('day.pop', { p: d.pop ?? 0 }))}</div>
       </div>
     </div>
-    ${blocksHTML(i)}${nwsHTML(i)}`;
+    ${blocksHTML(i)}${nwsHTML(i)}${extrasHTML(i)}`;
 }
 
 // The 10-Day screen shows its list, or one day opened from it (weekDay).
 let weekDay = null, lastWeekDay = 0;
 const dayTitle = i => (i === 0 ? t('calm.today') : i === 1 ? t('day.tomorrow') : dayName(state.fc.daily.time[i]));
+
+// UV and laundry for day i: part of Now and of every opened day.
+function extrasHTML(i) {
+  const d = dayRow(state.fc, i), l = laundryScore(i), info = d.uv != null ? uvInfo(d.uv) : null;
+  const hrs = hoursFor(state.fc, d.date).filter(h => h.hour >= 6 && h.hour <= 20 && h.uv != null);
+  const uv = info ? `<section class="extra">
+      <h4>${esc(t('stat.uv'))}</h4>
+      <div class="uv-read">
+        <span class="uv-num ${info.cls}">${Math.round(d.uv)}</span>
+        <div><b class="uv-cat">${esc(info.cat)}</b><small>${esc(t('uv.peak'))}</small></div>
+      </div>
+      <div class="uv-bars" role="list" aria-label="${esc(t('uv.hourly'))}">${hrs.map(h => `<div class="uv-bar" role="listitem" title="${clock(h.hour)}: ${num1(h.uv)}">
+        <i class="${uvInfo(h.uv).cls}" style="height:${Math.max(3, Math.min(h.uv, 12) / 12 * 100)}%"></i><span>${h.hour % 3 === 0 ? hourTick(h.hour) : ''}</span></div>`).join('')}</div>
+      <p class="uv-tip">${esc(info.tip)}</p>
+    </section>` : '';
+  const dry = l ? `<section class="extra laundry">
+      <h4>${esc(t('stat.laundry'))}</h4>
+      ${clothesline(l.lv, 200)}
+      <div class="laundry-text">${esc(l.text)}</div>
+      <div class="laundry-score"><span>${esc(t('laundry.index'))}</span><b>${l.s}</b><small>/100</small></div>
+      <div class="laundry-why">
+        <span>${dropGlyph()} ${esc(t('laundry.rain', { p: l.popMax }))}</span>
+        <span>💧 ${esc(t('laundry.humidity', { p: Math.round(l.rh) }))}</span>
+        <span>🌬️ ${esc(W(l.wind))}</span>
+        <span>☀️ ${esc(t('laundry.sun', { h: num1(l.sunH) }))}</span>
+      </div>
+    </section>` : '';
+  return uv || dry ? `<div class="extras">${uv}${dry}</div><p class="fine">${esc(t('uv.scale'))} ${esc(t('laundry.note'))}</p>` : '';
+}
 
 const dropGlyph = () => `<svg viewBox="0 0 10 12" width="10" height="12" aria-hidden="true"><path d="M5 0C7 3 9 5.5 9 7.6A4 4 0 0 1 1 7.6C1 5.5 3 3 5 0Z" fill="currentColor"/></svg>`;
 
@@ -700,7 +725,7 @@ const RENDER = {
         <div class="stat"><span>${esc(t('stat.sunset'))}</span><b>${isoClock(d.sunset)}</b></div>
       </div>
       <h3 class="sec-head">${esc(t('view.today.title'))}</h3>
-      ${blocksHTML(0)}${nwsHTML(0)}`;
+      ${blocksHTML(0)}${nwsHTML(0)}${extrasHTML(0)}`;
   },
   // Every day we have (10) as the original channel's tall cards, in a strip
   // that scrolls sideways; each card opens that day's forecast.
@@ -720,64 +745,6 @@ const RENDER = {
         <span class="pop">${dropGlyph()}${d.pop ?? 0}%</span>
       </button></li>`;
     }).join('')}</ul>`;
-  },
-  region() {
-    const d0 = state.fc.daily.time[0], d1 = state.fc.daily.time[1];
-    return `<p class="hint">${esc(t('region.hint'))}</p>
-      <div class="seg" role="group" aria-label="${esc(t('region.day'))}">
-        <button type="button" data-day="0" aria-pressed="${state.regionDay === 0}">${esc(t('region.today', { day: dayName(d0, 'short') }))}</button>
-        <button type="button" data-day="1" aria-pressed="${state.regionDay === 1}">${esc(t('region.tomorrow', { day: dayName(d1, 'short') }))}</button>
-      </div>
-      ${layersHTML()}`;
-  },
-  uv() {
-    const d = dayRow(state.fc, 0), d1 = dayRow(state.fc, 1);
-    const info = uvInfo(d.uv);
-    const hrs = hoursFor(state.fc, d.date).filter(h => h.hour >= 6 && h.hour <= 20);
-    const ang = Math.min(d.uv, 12) / 12 * 180 - 90;
-    const arc = (a0, a1, cls) => {
-      const p = a => [100 + 80 * Math.cos((a - 180) * Math.PI / 180), 100 + 80 * Math.sin((a - 180) * Math.PI / 180)];
-      const [x0, y0] = p(a0), [x1, y1] = p(a1);
-      return `<path d="M${x0} ${y0} A80 80 0 0 1 ${x1} ${y1}" class="${cls}"/>`;
-    };
-    const seg = v => v / 12 * 180;
-    return `<div class="uv">
-      <div class="gauge">
-        <svg viewBox="0 0 200 118" aria-hidden="true">
-          <g class="gauge-arcs">${arc(0, seg(3) - 1, 'uv-low')}${arc(seg(3) + 1, seg(6) - 1, 'uv-mod')}${arc(seg(6) + 1, seg(8) - 1, 'uv-high')}${arc(seg(8) + 1, seg(11) - 1, 'uv-vhigh')}${arc(seg(11) + 1, 180, 'uv-ext')}</g>
-          <g class="needle" style="transform:rotate(${ang}deg)"><path d="M100 30 L105 100 L95 100Z"/><circle cx="100" cy="100" r="9"/></g>
-        </svg>
-        <div class="uv-num ${info.cls}">${Math.round(d.uv)}</div>
-        <div class="uv-cat">${esc(info.cat)}</div>
-        <div class="uv-sub">${esc(t('uv.sub', { n: Math.round(d1.uv), cat: uvInfo(d1.uv).cat }))}</div>
-      </div>
-      <div class="uv-side">
-        <p class="uv-tip">${esc(info.tip)}</p>
-        <div class="uv-bars" role="list" aria-label="${esc(t('uv.hourly'))}">${hrs.map(h => `<div class="uv-bar" role="listitem" title="${clock(h.hour)}: ${num1(h.uv)}">
-          <i class="${uvInfo(h.uv).cls}" style="height:${Math.max(3, Math.min(h.uv, 12) / 12 * 100)}%"></i><span>${h.hour % 3 === 0 ? hourTick(h.hour) : ''}</span></div>`).join('')}</div>
-        <p class="fine">${esc(t('uv.scale'))}</p>
-      </div></div>`;
-  },
-  laundry() {
-    const today = laundryScore(0);
-    const rest = [1, 2, 3, 4].map(i => ({ i, l: laundryScore(i) })).filter(x => x.l);
-    if (!today) return `<div class="empty"><p>${esc(t('laundry.none'))}</p></div>`;
-    return `<div class="laundry">
-      <div class="laundry-hero">
-        ${clothesline(today.lv, 300)}
-        <div class="laundry-text">${esc(today.text)}</div>
-        <div class="laundry-score"><span>${esc(t('laundry.index'))}</span><b>${today.s}</b><small>/100</small></div>
-        <div class="laundry-why">
-          <span>${dropGlyph()} ${esc(t('laundry.rain', { p: today.popMax }))}</span>
-          <span>💧 ${esc(t('laundry.humidity', { p: Math.round(today.rh) }))}</span>
-          <span>🌬️ ${esc(W(today.wind))}</span>
-          <span>☀️ ${esc(t('laundry.sun', { h: num1(today.sunH) }))}</span>
-        </div>
-      </div>
-      <div class="laundry-days">${rest.map(({ i, l }) => `<div class="mini-day">
-        <div class="day-name">${esc(dayName(state.fc.daily.time[i], 'short'))}</div>${clothesline(l.lv, 110)}<small>${esc(l.text)}</small></div>`).join('')}</div>
-      <p class="fine">${esc(t('laundry.note'))}</p>
-    </div>`;
   },
   // Fire danger at the viewed place, with a card per day that also picks
   // which day the globe shows. Official warnings come first where there are any.
@@ -882,15 +849,6 @@ const AFTER = {
     document.querySelectorAll('.week-day').forEach(b => b.addEventListener('click', () => openWeekDay(+b.dataset.i)));
     sidewaysWheel();
     $('#week-back')?.addEventListener('click', () => openWeekDay(null));
-  },
-  region() {
-    document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
-      state.regionDay = +b.dataset.day;
-      blip('select');
-      render(false);
-      globe?.refreshLabels();
-    }));
-    bindLayers();
   },
   places() {
     loadSavedWeather();
@@ -1091,6 +1049,22 @@ function renderTimeline() {
   if (!timelineRaf) timelineRaf = requestAnimationFrame(() => { timelineRaf = 0; renderTimeline(); });
 }
 
+// City labels: names and the temperature now (On), or today's high and low
+// too (Detailed), or none (Off, just the place's red dot).
+const labelMode = () => (!state.layers.labels ? 'off' : state.labelsDetailed ? 'detailed' : 'on');
+function labelModeHTML() {
+  return `<div class="label-mode"><span id="labels-label">${esc(t('globe.labels'))}</span>
+    <div class="seg" role="radiogroup" aria-labelledby="labels-label">${['on', 'detailed', 'off'].map(m => `<button type="button" role="radio" data-labels="${m}" aria-checked="${m === labelMode()}" aria-pressed="${m === labelMode()}">${esc(t(`labels.${m}`))}</button>`).join('')}</div></div>`;
+}
+function setLabelMode(m) {
+  state.labelsDetailed = m === 'detailed';
+  store.set('labelsDetailed', state.labelsDetailed);
+  document.body.classList.toggle('labels-detailed', state.labelsDetailed);
+  setLayer('labels', m !== 'off');
+  globe?.refreshLabels();
+  updateLayersUI();
+}
+
 function layersHTML() {
   const sw = (key, label) => `<label class="switch"><input type="checkbox" data-layer="${key}" ${state.layers[key] ? 'checked' : ''}><span></span>${esc(label)}</label>`;
   const rows = ANIM_KEYS.filter(shown).map(k => {
@@ -1107,7 +1081,7 @@ function layersHTML() {
   const key = summaryKey();
   const summary = `<div class="anim-summary"><b>${esc(t('anim.summary', { n: on.length }))}</b><span id="anim-summary-time">${esc(key ? frameLabel(key) : '')}</span></div>`;
   return `<div id="layers">
-    <div class="toggles">${sw('night', t('globe.night'))}${sw('labels', t('globe.labels'))}${sw('borders', t('globe.borders'))}
+    <div class="toggles">${sw('night', t('globe.night'))}${labelModeHTML()}${sw('borders', t('globe.borders'))}
       <h4 class="toggles-head">${esc(t('layers.future'))}</h4>${sw('fcst', t(state.fcstExtended ? 'globe.fcst10' : 'globe.fcst'))}
       <h4 class="toggles-head">${esc(t('layers.past'))}</h4>${sw('sat', t('globe.precip'))}${sw('radar', t('globe.radar'))}</div>
     ${rows ? `<div class="anim${open ? '' : ' collapsed'}"><button type="button" class="anim-play" id="anim-play"></button>
@@ -1123,6 +1097,11 @@ function layersHTML() {
 const summaryKey = () => ['fcstg', 'fcst', 'radar', 'radar3', 'radar2', 'sat'].find(shown);
 
 function bindLayers() {
+  document.querySelectorAll('#layers [data-labels]').forEach(b => b.addEventListener('click', () => {
+    blip('select');
+    setLabelMode(b.dataset.labels);
+    $(`#layers [data-labels="${b.dataset.labels}"]`)?.focus({ preventScroll: true });
+  }));
   document.querySelectorAll('#layers [data-layer]').forEach(inp => inp.addEventListener('change', () => {
     blip('select');
     setLayer(inp.dataset.layer, inp.checked);
@@ -1225,9 +1204,8 @@ function openLocation(loc, { asHome = false, auto = false } = {}) {
   if (globe && calm.open) {
     if (calm.look === 'planet') globe.setMode('horizon', { lat: loc.lat, lon: loc.lon });
   } else if (globe) {
-    const m = state.view === 'globe' || state.view === 'region' ? 'region' : 'park';
     if (state.view === 'globe') go('now', { sound: false });
-    else globe.setMode(m, { lat: loc.lat, lon: loc.lon, ...(m === 'park' ? parkView() : {}) });
+    else globe.setMode('park', { lat: loc.lat, lon: loc.lon, ...parkView() });
   }
 }
 
@@ -1308,7 +1286,6 @@ $('#home-btn').addEventListener('click', () => {
   const h = state.home;
   if (!sameLoc(state.viewing, h)) return openLocation(h);
   if (state.view === 'globe') globe?.setMode('globe', { lat: h.lat, lon: h.lon });
-  else if (state.view === 'region') globe?.setMode('region', { lat: h.lat, lon: h.lon });
   else globe?.setMode('park', { lat: h.lat, lon: h.lon, ...parkView() });
 });
 $('#loc-q').addEventListener('input', e => {
@@ -1566,7 +1543,6 @@ addEventListener('resize', () => {
 function restoreGlobeView() {
   const v = state.viewing;
   if (state.view === 'globe') globe?.setMode('globe');
-  else if (state.view === 'region') globe?.setMode('region', { lat: v.lat, lon: v.lon });
   else globe?.setMode('park', { lat: v.lat, lon: v.lon, ...parkView() });
 }
 
@@ -1732,6 +1708,7 @@ function renderCalm() {
   const at = Math.max(0, hours.findIndex(h => h.hour === nowH));
   const next = hours.slice(at, at + 25);
   const uvNow = next[0]?.uv ?? 0;
+  const dryToday = laundryScore(0);
 
   const days = fc.daily.time.map((_, i) => dayRow(fc, i));
   const lo = Math.min(...days.map(d => d.lo)), hi = Math.max(...days.map(d => d.hi)), span = Math.max(1, hi - lo);
@@ -1763,6 +1740,8 @@ function renderCalm() {
       <div><span>${esc(t('stat.humidity'))}</span><b>${c.relative_humidity_2m}%</b></div>
       <div><span>${esc(t('stat.wind'))}</span><b>${esc(compass(c.wind_direction_10m))} ${esc(W(c.wind_speed_10m))}</b></div>
       <div><span>${esc(t('stat.uv'))}</span><b>${Math.round(uvNow)} · ${esc(uvInfo(uvNow).cat)}</b></div>
+      ${today.uv != null ? `<div><span>${esc(t('stat.uvPeak'))}</span><b>${Math.round(today.uv)} · ${esc(uvInfo(today.uv).cat)}</b></div>` : ''}
+      ${dryToday ? `<div><span>${esc(t('stat.laundry'))}</span><b>${esc(dryToday.text)}</b></div>` : ''}
       <div><span>${esc(t('stat.sunrise'))}</span><b>${isoClock(today.sunrise)}</b></div>
       <div><span>${esc(t('stat.sunset'))}</span><b>${isoClock(today.sunset)}</b></div>
       <div><span>${esc(t('calm.rain'))}</span><b>${today.pop ?? 0}%</b></div>
@@ -1962,10 +1941,10 @@ $('#install-btn').addEventListener('click', async () => {
 });
 
 // ---------- collapsed window (phones) ----------
-// The forecast screens and the Globe menu (Region keeps its small card, where
-// taps pick the area to show). Picking another screen or place opens it again.
+// The forecast screens and the Globe menu. Picking another screen or place
+// opens it again.
 const phone = matchMedia('(max-width: 860px)');
-const canCollapse = () => phone.matches && state.view !== 'region';
+const canCollapse = () => phone.matches;
 const isCollapsed = () => document.body.classList.contains('collapsed');
 function setCollapsed(on) {
   if (isCollapsed() === on) return;
@@ -1978,7 +1957,7 @@ function setCollapsed(on) {
 $('#panel').addEventListener('click', () => { if (isCollapsed()) { blip('select'); setCollapsed(false); } });
 phone.addEventListener('change', () => { if (!phone.matches) setCollapsed(false); });
 
-// ---------- explore mode (Globe & Region) ----------
+// ---------- explore mode (Globe) ----------
 // Hides the bars, panel, dock and ticker so the Earth gets the whole screen,
 // which matters most on phones. A small pill brings everything back.
 function setExplore(on) {
@@ -1992,7 +1971,7 @@ function setExplore(on) {
   $('#explore-exit span').textContent = t(on && spanning() ? 'span.stop' : 'explore.show');
   closePick();
   closeLangMenu();
-  if (on) $('#explore-exit').focus(); else if (['globe', 'region'].includes(state.view)) $('#explore').focus();
+  if (on) $('#explore-exit').focus(); else if (state.view === 'globe') $('#explore').focus();
   measureSafe();
   setTimeout(measureSafe, 400); // after the dock has slid back
   globe?.refreshLabels();
@@ -2074,6 +2053,8 @@ function start() {
   go(initial, { sound: false });
 }
 $('#start').addEventListener('click', start);
+
+document.body.classList.toggle('labels-detailed', state.labelsDetailed);
 
 // ---------- graphics quality ----------
 // Auto, High or Low (quality.js). It applies at start-up, so a change restarts the app.
@@ -2159,12 +2140,12 @@ const controls = {
   start,
   pan: (dx, dy) => { closePick(); exploreWake(); noteInput(); globe?.pan(dx, dy); },
   zoom: f => { exploreWake(); noteInput(); globe?.zoom(f); },
-  // A with nothing selected: open the spot under the centre reticle (Globe and
-  // Region), or the middle of the visible globe on the forecast screens.
+  // A with nothing selected: open the spot under the centre reticle (the Globe
+  // screen), or the middle of the visible globe on the forecast screens.
   pickCenter() {
     exploreWake();
     if (pickCard) return pickCard.querySelector('button')?.click();
-    const free = ['globe', 'region'].includes(state.view) || document.body.classList.contains('explore');
+    const free = state.view === 'globe' || document.body.classList.contains('explore');
     const x = free || innerWidth <= 860 ? innerWidth / 2 : innerWidth * 0.7;
     const y = free || innerWidth > 860 ? innerHeight / 2 : innerHeight * 0.28;
     globe?.pickAt(x, y);
@@ -2182,7 +2163,7 @@ const controls = {
     return true;
   },
   explore() {
-    if (!['globe', 'region'].includes(state.view)) go('globe');
+    if (state.view !== 'globe') go('globe');
     setExplore(!document.body.classList.contains('explore'));
   },
   globeView: () => go('globe'),

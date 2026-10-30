@@ -490,12 +490,8 @@ body:not(.started) .topbar, body:not(.started) .stage, body:not(.started) .dock,
   .panel { width: 100%; }
   .dock { bottom: 46px; border-radius: 22px; left: 16px; right: 16px; transform: none; max-width: none; }
   .dock button { font-size: 11px; }
-  /* When the buttons don't all fit, size them so the last one on screen is
-     cut in half: the usual cue that a row scrolls. How many show depends on
-     the width, keeping buttons near their natural size. Container units are
-     the track's width; each line is (width - gaps) / buttons showing. */
-  .dock-track { container: dock / inline-size; }
-  .dock button { width: calc((100cqw - 20px) / 5); }
+  /* The full-width dock is shared equally between its buttons. */
+  .dock button { flex: 1 1 0; width: auto; min-width: 0; }
   .ticker { height: 36px; }
   .tick-item { height: 36px; }
   body[data-view="globe"] .panel{ width: 100%; }

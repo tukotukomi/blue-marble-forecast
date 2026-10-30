@@ -10,6 +10,7 @@ import { moonPhase } from './sky.js';
 import { isApp, geoAvailable, geoPermission, getPosition } from './native.js';
 import { wakeSupported, keepAwake } from './wakelock.js';
 import { qualitySetting, lowPower } from './quality.js';
+import { fireDay, fireAt, fireHotspots, firesNear, hotspotCanvas, FIRE_COLOURS } from './fire.js';
 import { isSpanScreen, hasManyScreens, initSpan, startSpan, stopSpan, spanning, shareLayer, noteInput } from './span.js';
 import { VERSION, BUILD } from './version.js';
 import { initFeedback } from './feedback.js';
@@ -87,7 +88,7 @@ state.viewing = state.current ? { ...state.current } : state.home;
 try { localStorage.removeItem('fc.viewing'); } catch { /* storage unavailable */ }
 
 // Dock order; the app still opens on 'now' (see start()).
-const VIEWS = ['places', 'globe', 'now', 'week', 'region', 'uv', 'laundry'];
+const VIEWS = ['places', 'globe', 'now', 'week', 'region', 'uv', 'laundry', 'fire'];
 
 const ico = d => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const DOCK_ICONS = {
@@ -96,6 +97,7 @@ const DOCK_ICONS = {
   region: ico('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/>'),
   uv: ico('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/><path d="M12 9a3 3 0 0 0 0 6" fill="currentColor"/>'),
   laundry: ico('<path d="M8 3 3 6l2 4 2-1v12h10V9l2 1 2-4-5-3a3 3 0 0 1-8 0Z"/>'),
+  fire: ico('<path d="M12 2.5c.6 3-1 4.6-2.6 6.3C7.9 10.4 6 12.3 6 15.2a6 6 0 0 0 12 0c0-2.5-1.3-4.5-2.5-5.8-.3 1.4-1 2.2-2 2.6.6-3.2-.1-6.8-1.5-9.5Z"/>'),
   places: ico('<path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6L12 17l-5.38 2.83 1.03-6L3.3 9.6l6-.9Z"/>'),
   globe: ico('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
 };
@@ -315,7 +317,7 @@ async function loadLocation() {
         Object.assign(v, { name: nws.place.name, region: nws.place.region, cc: 'US', near: undefined, mine: undefined });
         renderTop(); updateMarkers();
       }
-      if (['now', 'week'].includes(state.view)) render(false);
+      if (['now', 'week', 'fire'].includes(state.view)) render(false);
     }).catch(() => {});
   }
 }
@@ -462,6 +464,56 @@ function openWeekDay(i) {
   setTimeout(() => (i == null ? $(`.week-day[data-i="${lastWeekDay}"]`) : $('#week-back'))?.focus({ preventScroll: true }), 200);
 }
 
+// ---------- fire danger ----------
+const FLAME_ICON = (size, colour) => `<svg class="fire-flame" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true"><path d="M12 2.5c.6 3-1 4.6-2.6 6.3C7.9 10.4 6 12.3 6 15.2a6 6 0 0 0 12 0c0-2.5-1.3-4.5-2.5-5.8-.3 1.4-1 2.2-2 2.6.6-3.2-.1-6.8-1.5-9.5Z" fill="${colour}" stroke="rgba(30,20,10,.28)" stroke-width=".7"/></svg>`;
+// maps: date -> a day's map (fire.js), in the order the forecast's days come.
+const fire = { day: 0, maps: {}, hot: null, hotKey: null, loading: false, failed: false, shown: null };
+
+// Fetch the days not loaded yet, one at a time, updating the panel as they
+// arrive. A date GWIS has nothing for ends the list.
+async function loadFire() {
+  if (fire.loading || !state.fc) return;
+  const v = state.viewing, hotKey = `${Math.round(v.lat / 5)},${Math.round(v.lon / 5)}`;
+  const dates = state.fc.daily.time.filter(d => !(d in fire.maps));
+  if (!dates.length && hotKey === fire.hotKey) return;
+  fire.loading = true;
+  fire.failed = false;
+  const redraw = () => { if (state.view === 'fire') render(false); };
+  try {
+    if (hotKey !== fire.hotKey) {
+      fire.hotKey = hotKey;
+      fire.hot = await fireHotspots(v.lat, v.lon).catch(() => null);
+      fire.shown = null;
+      redraw();
+    }
+    for (const d of dates) {
+      const map = await fireDay(d);
+      fire.maps[d] = map.empty ? null : map;
+      if (map.empty && Object.values(fire.maps).some(Boolean)) break;
+      redraw();
+    }
+  } catch { fire.failed = !Object.values(fire.maps).some(Boolean); }
+  fire.loading = false;
+  redraw();
+}
+
+function showFireMap() {
+  if (state.view !== 'fire' || !globe || !state.fc) return;
+  const dates = state.fc.daily.time.filter(d => fire.maps[d]);
+  const d = dates[Math.min(fire.day, dates.length - 1)];
+  if (!d) return;
+  const hot = d === dates[0] ? fire.hot : null; // satellites see today, not next week
+  const key = `${d}|${hot ? fire.hotKey : ''}`;
+  if (key === fire.shown) return;
+  fire.shown = key;
+  globe.setOverlay(fire.maps[d].canvas, hot && { canvas: hotspotCanvas(hot), box: hot.box });
+}
+function hideFireMap() {
+  if (fire.shown == null) return;
+  fire.shown = null;
+  globe?.setOverlay(null);
+}
+
 // ---------- view switching ----------
 // On phones, Now opens close in (about 500 km across the screen) so the
 // place and its weather fill the small view; the other screens keep the
@@ -475,6 +527,8 @@ function go(id, { sound = true } = {}) {
   setCollapsed(false);
   state.view = id;
   weekDay = null; // 10-Day always opens on its list
+  fire.day = 0;   // and Fire on today
+  if (id !== 'fire') hideFireMap();
   dock.querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.view === id ? 'page' : 'false'));
   revealDockButton(id);
   document.body.dataset.view = id;
@@ -522,8 +576,8 @@ function render(animate) {
 // NWS text is only published in English, so other languages get a short note.
 const englishOnly = () => t('nws.englishOnly') ? `<span class="en-only" lang="en">${esc(t('nws.englishOnly'))}</span>` : '';
 
-const alertsHTML = () => {
-  const a = state.nws?.alerts || [];
+const alertsHTML = (only = () => true) => {
+  const a = (state.nws?.alerts || []).filter(only);
   if (!a.length) return '';
   return `<div class="alerts">${a.slice(0, 3).map(x => `<details class="alert sev-${esc((x.severity || '').toLowerCase())}">
     <summary><span class="alert-dot"></span><span lang="en">${esc(x.event)}</span><small>${esc(t('alert.sender'))}</small></summary>
@@ -725,6 +779,39 @@ const RENDER = {
       <p class="fine">${esc(t('laundry.note'))}</p>
     </div>`;
   },
+  // Fire danger at the viewed place, with a card per day that also picks
+  // which day the globe shows. Official warnings come first where there are any.
+  fire() {
+    const dates = state.fc.daily.time.filter(d => fire.maps[d]);
+    if (!dates.length) return `<div class="empty">${FLAME_ICON(96, FIRE_COLOURS[2])}<p>${esc(t(fire.failed ? 'fire.error' : 'loading'))}</p></div>`;
+    const v = state.viewing, levelOn = d => fireAt(fire.maps[d], v.lat, v.lon);
+    const i = Math.min(fire.day, dates.length - 1), level = levelOn(dates[i]);
+    const colour = n => (n ? FIRE_COLOURS[n - 1] : '#b9c4d2');
+    const near = i === 0 && fire.hot ? firesNear(fire.hot, v.lat, v.lon) : null;
+    return `${alertsHTML(a => /fire|red flag/i.test(a.event))}
+      <div class="fire">
+        <div class="fire-hero">
+          ${FLAME_ICON(92, colour(level))}
+          <div>
+            <div class="fire-sub">${esc(t('fire.sub', { day: dayTitle(i), place: placeName(v) }))}</div>
+            <div class="fire-level">${esc(t(`fire.level.${level}`))}</div>
+            <p class="fire-tip">${esc(t(`fire.tip.${level}`))}</p>
+          </div>
+        </div>
+        ${near == null ? '' : `<p class="fire-near${near ? ' burning' : ''}">${esc(t(near ? 'fire.near' : 'fire.clear'))}</p>`}
+        <ul class="week" aria-label="${esc(t('view.fire.title'))}">${dates.map((d, n) => {
+          const lv = levelOn(d);
+          return `<li><button type="button" class="day-card fire-card" data-i="${n}" aria-pressed="${n === i}">
+            <span class="day-name">${esc(n < 2 ? dayTitle(n) : dayName(d, 'short'))}</span>
+            <span class="day-date">${esc(dateShort(d))}</span>
+            <i class="fire-dot" style="background:${colour(lv)}"></i>
+            <span class="day-cond">${esc(t(`fire.level.${lv}`))}</span>
+          </button></li>`;
+        }).join('')}</ul>
+        <ul class="fire-legend">${FIRE_COLOURS.map((c, n) => `<li><i style="background:${c}"></i>${esc(t(`fire.level.${n + 1}`))}</li>`).join('')}${fire.hot ? `<li><i class="fire-spot"></i>${esc(t('fire.spot'))}</li>` : ''}</ul>
+        <p class="fine">${esc(t('fire.note'))}</p>
+      </div>`;
+  },
   // A phone-style list of the starred places: weather icon, name, local
   // time and region, the temperature now and today's high and low.
   places() {
@@ -768,16 +855,32 @@ const RENDER = {
   },
 };
 
+// A mouse wheel scrolls a strip of day cards sideways.
+function sidewaysWheel() {
+  $('.week')?.addEventListener('wheel', e => {
+    const strip = e.currentTarget;
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || strip.scrollWidth <= strip.clientWidth) return;
+    e.preventDefault();
+    strip.scrollBy({ left: e.deltaY });
+  }, { passive: false });
+}
+
 const AFTER = {
+  fire() {
+    sidewaysWheel();
+    document.querySelectorAll('.fire-card').forEach(b => b.addEventListener('click', () => {
+      blip('select');
+      const n = +b.dataset.i;
+      fire.day = n;
+      render(false);
+      $(`.fire-card[data-i="${n}"]`)?.focus({ preventScroll: true });
+    }));
+    loadFire();
+    showFireMap();
+  },
   week() {
     document.querySelectorAll('.week-day').forEach(b => b.addEventListener('click', () => openWeekDay(+b.dataset.i)));
-    // A mouse wheel scrolls the strip sideways.
-    $('.week')?.addEventListener('wheel', e => {
-      const strip = e.currentTarget;
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || strip.scrollWidth <= strip.clientWidth) return;
-      e.preventDefault();
-      strip.scrollBy({ left: e.deltaY });
-    }, { passive: false });
+    sidewaysWheel();
     $('#week-back')?.addEventListener('click', () => openWeekDay(null));
   },
   region() {

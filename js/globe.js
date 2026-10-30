@@ -57,7 +57,7 @@ void main() {
 
 const FRAG = `
 uniform sampler2D dayTex, nightTex, satA, satB, radA, radB, rad2A, rad2B, rad3A, rad3B, fcstA, fcstB, fcstgA, fcstgB, detailDay, detailNight;
-uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uRad2, rad2Mix, uRad3, rad3Mix, uFcst, fcstMix, fcstShow, uFcstG, fcstgMix, uDetail, uGrain;
+uniform vec3 sunDir; uniform float uNight, uSat, satMix, uRad, radMix, uRad2, rad2Mix, uRad3, rad3Mix, uFcst, fcstMix, fcstShow, uFcstG, fcstgMix, uPrecip, uDetail, uGrain;
 // Image patches as (west, south, width, height) in degrees. West may be any
 // longitude, so a patch can straddle the date line.
 uniform vec4 satBox, radBox, rad2Box, rad3Box, fcstBox, fcstgBox, detailBox;
@@ -140,15 +140,15 @@ void main() {
   // Each radar replaces the layers beneath it where its radars can see.
   // Radar areas on the same switch: North America, Germany, Europe (OPERA).
   vec2 ruv = boxUv(ll, radBox);
-  float rIn = inside(ruv) * uRad;
+  float rIn = inside(ruv) * uRad * uPrecip;
   vec2 r2uv = boxUv(ll, rad2Box);
-  float r2In = inside(r2uv) * uRad2;
+  float r2In = inside(r2uv) * uRad2 * uPrecip;
   vec2 r3uv = boxUv(ll, rad3Box);
-  float r3In = inside(r3uv) * uRad3;
+  float r3In = inside(r3uv) * uRad3 * uPrecip;
   vec2 fuv = boxUv(ll, fcstBox);
-  float fIn = inside(fuv) * uFcst * fcstShow;
+  float fIn = inside(fuv) * uFcst * fcstShow * uPrecip;
   vec2 guv = boxUv(ll, fcstgBox);
-  float gIn = inside(guv) * uFcstG;
+  float gIn = inside(guv) * uFcstG * uPrecip;
   float anyF = max(fIn, gIn);
   // Edge roughness in degrees-space (~3 km and ~1 km features), faded in with zoom.
   float grain = uGrain > 0.0 ? (vnoise(ll * 36.0) * 0.65 + vnoise(ll * 110.0) * 0.35 - 0.5) * 0.3 * uGrain : 0.0;
@@ -157,7 +157,7 @@ void main() {
   float r2Cov = covered(rad2A, rad2B, r2uv, rad2Mix, r2In);
   float r3Cov = covered(rad3A, rad3B, r3uv, rad3Mix, r3In);
   vec2 suv = boxUv(ll, satBox);
-  float sIn = inside(suv) * uSat;
+  float sIn = inside(suv) * uSat * uPrecip;
   if (sIn > 0.0) {
     vec4 o = overlay(satA, satB, suv, satMix, grain);
     col = mix(col, o.rgb, o.a * sIn * (1.0 - rCov) * (1.0 - r2Cov) * (1.0 - r3Cov) * (1.0 - anyF) * 0.85);
@@ -249,6 +249,7 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     fcstBox: { value: new THREE.Vector4(0, 0, 1, 1) }, fcstShow: { value: 1 },
     uFcstG: { value: 0 }, fcstgMix: { value: 0 }, fcstgA: { value: null }, fcstgB: { value: null },
     fcstgBox: { value: new THREE.Vector4(-180, -90, 360, 180) },
+    uPrecip: { value: 1 }, // 0 hides every rain layer (the Fire tab)
     uDetail: { value: 0 }, detailDay: { value: null }, detailNight: { value: null },
     uGrain: { value: 0 },
     detailBox: { value: new THREE.Vector4(0, 0, 1, 1) },
@@ -335,6 +336,30 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
     new THREE.ShaderMaterial({ vertexShader: ATMO_VERT, fragmentShader: ATMO_FRAG, side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })
   );
   scene.add(atmo);
+
+  // A whole-world picture draped just above the surface (the Fire tab's map).
+  // It's its own mesh, so it needs none of the Earth shader's texture slots
+  // (WebGL allows only 16 and that shader uses them all), and it stays
+  // readable on the night side.
+  const overlayMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false });
+  const overlay = new THREE.Mesh(new THREE.SphereGeometry(1.0012, 160, 80), overlayMat);
+  overlay.visible = false;
+  scene.add(overlay);
+  // A sharper patch of just one area over it (the Fire tab's hot spots).
+  const patchMat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false });
+  let patchMesh = null;
+  function setPatch(patch) {
+    if (patchMesh) { scene.remove(patchMesh); patchMesh.geometry.dispose(); patchMesh = null; }
+    patchMat.map?.dispose();
+    patchMat.map = null;
+    if (!patch) return;
+    const { canvas, box } = patch, r = D2R;
+    patchMat.map = new THREE.CanvasTexture(canvas);
+    patchMat.map.colorSpace = THREE.SRGBColorSpace;
+    patchMat.needsUpdate = true;
+    patchMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0016, 48, 24, (box.w + 180) * r, (box.e - box.w) * r, (90 - box.n) * r, (box.n - box.s) * r), patchMat);
+    scene.add(patchMesh);
+  }
 
   // --- Sky: random field, constellations and the planets (sky.js) ---
   const sky = new THREE.Group();
@@ -1069,6 +1094,23 @@ export function createGlobe(host, { labelLayer, onPick, onTap, onDrag, onLayerFr
       if (!interactive()) return;
       anim = null; lastInteract = performance.now();
       zoomBy(factor);
+    },
+    // Drape an equirectangular canvas over the globe in place of the rain
+    // layers, or null to go back. patch: { canvas, box } drawn over it.
+    setOverlay(canvas, patch = null) {
+      setPatch(patch);
+      overlayMat.map?.dispose();
+      overlayMat.map = null;
+      if (canvas) {
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        overlayMat.map = tex;
+      }
+      overlayMat.needsUpdate = true;
+      overlay.visible = !!canvas;
+      uniforms.uPrecip.value = canvas ? 0 : 1;
+      invalidate();
     },
     // Span all screens (span.js).
     setSpan(s) {
